@@ -41,47 +41,57 @@ export default function Home() {
       // Use any to avoid TS errors with window.Telegram
       const webApp = (window as any).Telegram?.WebApp;
       
-      if (!webApp?.initDataUnsafe?.user) {
-        setLoading(false);
-        return;
-      }
+      // Wait for WebApp to be ready and check for user data
+      if (webApp) {
+        webApp.ready();
+        
+        if (!webApp.initDataUnsafe?.user) {
+          // If in development or running on local, you might want to bypass or mock
+          // But for production strictly within Telegram, this check is correct
+          setLoading(false);
+          return;
+        }
 
-      const tgUser = webApp.initDataUnsafe.user;
-      const tgId = tgUser.id;
+        const tgUser = webApp.initDataUnsafe.user;
+        const tgId = tgUser.id;
 
-      try {
-        let { data, error } = await supabase
-          .from('users')
-          .select('*')
-          .eq('telegram_id', tgId)
-          .single();
-
-        if (error && error.code === 'PGRST116') {
-          const newUser = {
-            telegram_id: tgId,
-            username: tgUser.username || '',
-            first_name: tgUser.first_name || '',
-            points: 100,
-            ton_balance: 0,
-            is_eligible: true,
-            last_check_in: null,
-            email: null
-          };
-
-          const { data: createdUser, error: createError } = await supabase
+        try {
+          let { data, error } = await supabase
             .from('users')
-            .insert([newUser])
-            .select()
+            .select('*')
+            .eq('telegram_id', tgId)
             .single();
 
-          if (createError) throw createError;
-          setUser(createdUser);
-        } else if (data) {
-          setUser(data);
+          if (error && error.code === 'PGRST116') {
+            const newUser = {
+              telegram_id: tgId,
+              username: tgUser.username || '',
+              first_name: tgUser.first_name || '',
+              points: 100,
+              ton_balance: 0,
+              is_eligible: true,
+              last_check_in: null,
+              email: null
+            };
+
+            const { data: createdUser, error: createError } = await supabase
+              .from('users')
+              .insert([newUser])
+              .select()
+              .single();
+
+            if (createError) throw createError;
+            setUser(createdUser);
+          } else if (data) {
+            setUser(data);
+          }
+        } catch (err) {
+          console.error("Supabase Error:", err);
+        } finally {
+          setLoading(false);
         }
-      } catch (err) {
-        console.error("Supabase Error:", err);
-      } finally {
+      } else {
+        // Not running in Telegram environment
         setLoading(false);
       }
     };

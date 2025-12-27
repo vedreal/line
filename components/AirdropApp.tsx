@@ -302,7 +302,19 @@ export default function AirdropApp() {
       alert('Failed to save email');
     }
   };
+  const getAgeTier = (years: number): string => {
+  if (years >= 2) return "LEGEND";
+  if (years >= 1.5) return "OLD";
+  if (years >= 1) return "MATURE";
+  return "YOUNG";
+};
 
+const getAgeTierColor = (years: number): string => {
+  if (years >= 2) return "text-purple-400";
+  if (years >= 1.5) return "text-orange-400";
+  if (years >= 1) return "text-green-400";
+  return "text-blue-400";
+};
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen gap-4">
@@ -356,8 +368,8 @@ export default function AirdropApp() {
               <h2 className="text-lg font-bold text-green-500">You are Eligible!</h2>
             </div>
             <p className="text-zinc-400 text-sm mb-1">
-              Account Age: <span className="text-white font-mono">{Math.floor(user.accountAgeYears)}y {Math.floor((user.accountAgeYears % 1) * 12)}m</span>
-            </p>
+  Account Age: <span className={`font-bold ${getAgeTierColor(user.accountAgeYears)}`}>{getAgeTier(user.accountAgeYears)}</span>
+</p>
             <p className="text-zinc-400 text-sm">
               Age Bonus: <span className="text-yellow font-bold">+{Math.floor(user.accountAgeYears * 1000)} pts</span>
             </p>

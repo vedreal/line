@@ -1,13 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabase";
+import { createClient } from '@supabase/supabase-js';
 import { showAd } from "@/lib/adsgram";
-import { CheckCircle2, XCircle, Clock, Calendar, Users, Wallet, Trophy, User as UserIcon } from "lucide-react";
+import { CheckCircle2, XCircle, Clock, Calendar, Users, Wallet, Trophy, User as UserIcon, AlertCircle } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
 
-// --- Types ---
+// Direct initialization to avoid any potential env issues in lib/supabase.ts
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+);
+
 interface UserData {
   telegram_id: number;
   username: string;
@@ -28,8 +33,14 @@ export default function Home() {
   const [nextCheckIn, setNextCheckIn] = useState<Date | null>(null);
   const [timeLeft, setTimeLeft] = useState("");
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [debugLog, setDebugLog] = useState<string[]>([]);
 
   const AIRDROP_END_DATE = new Date("2025-03-10T00:00:00Z");
+
+  const log = (msg: string) => {
+    console.log(`[App] ${msg}`);
+    setDebugLog(prev => [...prev.slice(-4), msg]);
+  };
 
   useEffect(() => {
     const init = async () => {
@@ -39,31 +50,38 @@ export default function Home() {
       if (webApp) {
         webApp.ready();
         webApp.expand();
+        log("WebApp Ready");
       }
 
       const attemptFetch = async () => {
         const currentWebApp = (window as any).Telegram?.WebApp;
-        // The most critical part: get the user ID from ANY available source
         const tgUser = currentWebApp?.initDataUnsafe?.user;
         const tgId = tgUser?.id;
         
-        if (tgId) {
-          try {
-            // Attempt to fetch from Supabase
-            const { data, error } = await supabase
+        if (!tgId) {
+          log("No TG ID found yet...");
+          return false;
+        }
+
+        log(`Found ID: ${tgId}. Connecting DB...`);
+
+        try {
+          const { data, error } = await supabase
+            .from('users')
+            .select('*')
+            .eq('telegram_id', tgId)
+            .maybeSingle();
+
+          if (error) {
+            log(`DB Error: ${error.message}`);
+            return false;
+          }
+
+          if (!data) {
+            log("User missing. Registering...");
+            const { data: created, error: createError } = await supabase
               .from('users')
-              .select('*')
-              .eq('telegram_id', tgId)
-              .maybeSingle();
-
-            if (error) {
-              console.error("Supabase Select Error:", error.message);
-              return false;
-            }
-
-            if (!data) {
-              // Create user if not exists
-              const newUser = {
+              .insert([{
                 telegram_id: tgId,
                 username: tgUser.username || '',
                 first_name: tgUser.first_name || '',
@@ -72,32 +90,27 @@ export default function Home() {
                 is_eligible: true,
                 last_check_in: null,
                 email: null
-              };
+              }])
+              .select()
+              .maybeSingle();
 
-              const { data: created, error: createError } = await supabase
-                .from('users')
-                .insert([newUser])
-                .select()
-                .maybeSingle();
-
-              if (createError) {
-                console.error("Supabase Create Error:", createError.message);
-                return false;
-              }
-              setUser(created);
-            } else {
-              setUser(data);
+            if (createError) {
+              log(`Reg Error: ${createError.message}`);
+              return false;
             }
-            return true;
-          } catch (err) {
-            console.error("Unexpected Error:", err);
-            return false;
+            log("Registered!");
+            setUser(created);
+          } else {
+            log("User loaded!");
+            setUser(data);
           }
+          return true;
+        } catch (err: any) {
+          log(`Fatal: ${err.message || 'Unknown'}`);
+          return false;
         }
-        return false;
       };
 
-      // Aggressive retry loop: 250ms interval, up to 40 times (10 seconds total)
       let attempts = 0;
       const interval = setInterval(async () => {
         attempts++;
@@ -105,6 +118,7 @@ export default function Home() {
         if (success || attempts >= 40) {
           clearInterval(interval);
           setLoading(false);
+          if (!success) log("Auth timeout.");
         }
       }, 250);
     };
@@ -173,8 +187,11 @@ export default function Home() {
   };
 
   if (loading) return (
-    <div className="flex items-center justify-center min-h-screen">
-      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#0088CC]"></div>
+    <div className="flex flex-col items-center justify-center min-h-screen">
+      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#0088CC] mb-4"></div>
+      <div className="text-[10px] text-zinc-500 font-mono text-center px-4">
+        {debugLog.map((l, i) => <div key={i}>{l}</div>)}
+      </div>
     </div>
   );
 
@@ -184,8 +201,21 @@ export default function Home() {
       <div className="flex flex-col items-center justify-center min-h-screen p-6 text-center">
         <XCircle size={64} className="text-red-500 mb-4" />
         <h1 className="text-xl font-bold mb-2">Akses Ditolak</h1>
-        <p className="text-zinc-400 mb-4">Buka aplikasi ini melalui Telegram Mini App.</p>
-        <div className="text-[10px] text-zinc-600 font-mono">ID: {tgId || "Tidak Terdeteksi"}</div>
+        <p className="text-zinc-400 mb-6">Buka aplikasi ini melalui Telegram Mini App.</p>
+        
+        <div className="w-full bg-zinc-900/50 border border-zinc-800 rounded-xl p-4 text-left font-mono text-[10px] space-y-1">
+          <div className="flex items-center gap-2 text-zinc-500 mb-2 border-b border-zinc-800 pb-2">
+            <AlertCircle size={12} />
+            <span>SISTEM DIAGNOSTIK</span>
+          </div>
+          <div className="flex justify-between"><span className="text-zinc-500">USER_ID:</span> <span>{tgId || "NULL"}</span></div>
+          <div className="flex justify-between"><span className="text-zinc-500">DB_STATUS:</span> <span>{debugLog[debugLog.length-1]?.includes('DB Error') ? 'FAILED' : 'CONNECTED'}</span></div>
+          <div className="mt-2 pt-2 border-t border-zinc-800 text-zinc-600">
+            {debugLog.map((l, i) => <div key={i} className="truncate">• {l}</div>)}
+          </div>
+        </div>
+        
+        <Button className="mt-8" onClick={() => window.location.reload()}>Coba Lagi</Button>
       </div>
     );
   }

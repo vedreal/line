@@ -93,7 +93,27 @@ export default function AirdropApp() {
         }
 
         if (existingUser) {
-          const accountAge = calculateAccountAge(new Date(existingUser.created_at));
+          // Fetch real account age for existing users
+          let accountAge = 0;
+          
+          try {
+            const ageResponse = await fetch('/api/telegram-age', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ telegramId })
+            });
+            
+            if (ageResponse.ok) {
+              const ageData = await ageResponse.json();
+              accountAge = ageData.accountAgeYears || 0;
+            } else {
+              // Fallback to database created_at
+              accountAge = calculateAccountAge(new Date(existingUser.created_at));
+            }
+          } catch (err) {
+            console.error('Failed to get account age:', err);
+            accountAge = calculateAccountAge(new Date(existingUser.created_at));
+          }
           
           setUser({
             telegramId: existingUser.telegram_id,
@@ -107,9 +127,30 @@ export default function AirdropApp() {
             referrals: 0
           });
         } else {
-          // New user
-          const accountAge = Math.random() * 2 + 0.5;
-          const isEligible = accountAge >= 1;
+          // New user - fetch real account age from Telegram
+          let accountAge = 0;
+          let isEligible = false;
+          
+          try {
+            // Call our API to get real Telegram account age
+            const ageResponse = await fetch('/api/telegram-age', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ telegramId })
+            });
+            
+            if (ageResponse.ok) {
+              const ageData = await ageResponse.json();
+              accountAge = ageData.accountAgeYears || 0;
+              isEligible = accountAge >= 1;
+            }
+          } catch (err) {
+            console.error('Failed to get account age:', err);
+            // Fallback: assume not eligible if we can't verify
+            accountAge = 0;
+            isEligible = false;
+          }
+
           const initialPoints = isEligible ? Math.floor(accountAge * 1000) : 0;
 
           const { data: newUser, error: insertError } = await supabase
@@ -119,6 +160,7 @@ export default function AirdropApp() {
               username: tgUser.username || null,
               first_name: tgUser.first_name || null,
               points: initialPoints,
+              account_age_years: accountAge,
             })
             .select()
             .single();
@@ -491,4 +533,4 @@ function NavButton({ active, onClick, icon, label }: any) {
       <span className="text-[10px] font-bold uppercase tracking-wider">{label}</span>
     </button>
   );
-    }
+}

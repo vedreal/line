@@ -160,7 +160,6 @@ export default function AirdropApp() {
               username: tgUser.username || null,
               first_name: tgUser.first_name || null,
               points: initialPoints,
-              account_age_years: accountAge,
             })
             .select()
             .single();
@@ -533,4 +532,4 @@ function NavButton({ active, onClick, icon, label }: any) {
       <span className="text-[10px] font-bold uppercase tracking-wider">{label}</span>
     </button>
   );
-}
+          }

@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/lib/supabase";
-import { CheckCircle2, XCircle, Clock, Calendar, Users, Wallet, Trophy, User as UserIcon, Loader2 } from "lucide-react";
+import { CheckCircle2, XCircle, Clock, Calendar, Users, Wallet, Trophy, User as UserIcon, Loader2, Camera, ShieldCheck } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -21,6 +21,7 @@ interface UserData {
   checkInPoints: number;
   referralPoints: number;
   referralTon: number;
+  isVerified: boolean;
 }
 
 // --- Components ---
@@ -34,13 +35,14 @@ function Button({ onClick, children, className = "", disabled = false, variant =
     primary: "bg-[#0088CC] text-white",
     secondary: "bg-zinc-800 text-white border border-zinc-700",
     disabled: "bg-zinc-700 text-zinc-400 cursor-not-allowed opacity-50 shadow-none transform-none",
+    success: "bg-green-600 text-white",
   };
   
   return (
     <button 
       onClick={onClick} 
       disabled={disabled}
-      className={`${base} ${disabled ? styles.disabled : (variant === "primary" ? styles.primary : styles.secondary)} ${className}`}
+      className={`${base} ${disabled ? styles.disabled : styles[variant as keyof typeof styles] || styles.primary} ${className}`}
     >
       {children}
     </button>
@@ -50,7 +52,7 @@ function Button({ onClick, children, className = "", disabled = false, variant =
 // --- Main Component ---
 export default function AirdropApp() {
   const [fetchingAge, setFetchingAge] = useState(false);
-  const [activeTab, setActiveTab] = useState<"home" | "referral" | "profile">("home");
+  const [activeTab, setActiveTab] = useState<"home" | "referral" | "verify" | "profile">("home");
   const [user, setUser] = useState<UserData | null>(null);
   const [loading, setLoading] = useState(true);
   const [emailInput, setEmailInput] = useState("");
@@ -59,6 +61,13 @@ export default function AirdropApp() {
   const [timeLeft, setTimeLeft] = useState("");
   const [currentTime, setCurrentTime] = useState(new Date());
   const [error, setError] = useState<string | null>(null);
+  
+  // Verification states
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [stream, setStream] = useState<MediaStream | null>(null);
+  const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const AIRDROP_END_DATE = new Date("2025-03-10T00:00:00Z");
 
@@ -101,7 +110,6 @@ export default function AirdropApp() {
 
         const telegramId = tgUser.id.toString();
 
-        // Check if user exists in DB
         const { data: existingUser, error: fetchError } = await supabase
           .from('users')
           .select('*')
@@ -113,7 +121,6 @@ export default function AirdropApp() {
         }
 
         if (existingUser) {
-          // User exists - use saved account age from database
           const accountAge = existingUser.account_age_years || 0;
           
           setUser({
@@ -129,10 +136,10 @@ export default function AirdropApp() {
             checkInCount: existingUser.check_in_count || 0,
             checkInPoints: (existingUser.check_in_count || 0) * 10,
             referralPoints: 0,
-            referralTon: 0
+            referralTon: 0,
+            isVerified: existingUser.is_verified || false
           });
         } else {
-          // New user - fetch account age from backend API
           setFetchingAge(true);
           
           let accountAge = 0;
@@ -147,7 +154,6 @@ export default function AirdropApp() {
               const data = await response.json();
               accountAge = data.accountAgeYears || 0;
             } else {
-              // Fallback to estimation
               accountAge = estimateAccountAge(parseInt(telegramId));
             }
           } catch (apiError) {
@@ -160,7 +166,6 @@ export default function AirdropApp() {
           const isEligible = accountAge >= 1;
           const initialPoints = isEligible ? Math.floor(accountAge * 1000) : 0;
 
-          // Save to database with account_age_years
           const { data: newUser, error: insertError } = await supabase
             .from('users')
             .insert({
@@ -188,7 +193,8 @@ export default function AirdropApp() {
             checkInCount: 0,
             checkInPoints: 0,
             referralPoints: 0,
-            referralTon: 0
+            referralTon: 0,
+            isVerified: false
           });
         }
 
@@ -247,6 +253,13 @@ export default function AirdropApp() {
       setNextCheckIn(tomorrow);
     }
   }, [user?.lastCheckIn, currentTime]);
+
+  // Cleanup camera stream when leaving verify tab
+  useEffect(() => {
+    if (activeTab !== "verify" && stream) {
+      stopCamera();
+    }
+  }, [activeTab]);
 
   const handleCheckIn = async () => {
     if (!user) return;
@@ -317,6 +330,88 @@ export default function AirdropApp() {
       console.error('Email save error:', err);
       alert('Failed to save email');
     }
+  };
+
+  // Face Verification Functions
+  const startVerification = async () => {
+    try {
+      const mediaStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user' }, // Front camera
+        audio: false
+      });
+      
+      setStream(mediaStream);
+      setIsVerifying(true);
+      
+      if (videoRef.current) {
+        videoRef.current.srcObject = mediaStream;
+      }
+    } catch (err) {
+      console.error('Camera access error:', err);
+      alert('Failed to access camera. Please allow camera permissions.');
+    }
+  };
+
+  const capturePhoto = () => {
+    if (!videoRef.current || !canvasRef.current) return;
+    
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const context = canvas.getContext('2d');
+    
+    if (!context) return;
+    
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    context.drawImage(video, 0, 0);
+    
+    const imageData = canvas.toDataURL('image/jpeg');
+    setCapturedImage(imageData);
+    stopCamera();
+  };
+
+  const stopCamera = () => {
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+      setStream(null);
+    }
+    setIsVerifying(false);
+  };
+
+  const submitVerification = async () => {
+    if (!user || !capturedImage) return;
+    
+    try {
+      // Here you would typically send the image to a face verification API
+      // For now, we'll just mark as verified
+      const { error } = await supabase
+        .from('users')
+        .update({ 
+          is_verified: true,
+          points: user.points + 50 // Bonus for verification
+        })
+        .eq('telegram_id', user.telegramId);
+
+      if (error) throw error;
+
+      setUser({ ...user, isVerified: true, points: user.points + 50 });
+      setCapturedImage(null);
+      
+      const WebApp = (window as any).Telegram?.WebApp;
+      if (WebApp?.showAlert) {
+        WebApp.showAlert('✅ Verification successful! +50 points');
+      } else {
+        alert('✅ Verification successful! +50 points');
+      }
+    } catch (err) {
+      console.error('Verification error:', err);
+      alert('Failed to submit verification');
+    }
+  };
+
+  const retakePhoto = () => {
+    setCapturedImage(null);
+    startVerification();
   };
 
   const getAgeTier = (years: number): string => {
@@ -477,6 +572,103 @@ export default function AirdropApp() {
             </motion.div>
           )}
 
+          {activeTab === "verify" && (
+            <motion.div
+              key="verify"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="space-y-6"
+            >
+              <Card>
+                <div className="text-center space-y-4">
+                  <div className="w-16 h-16 bg-green-600/20 rounded-full flex items-center justify-center mx-auto">
+                    <ShieldCheck size={32} className="text-green-500" />
+                  </div>
+                  <h2 className="text-xl font-bold">Face Verification</h2>
+                  
+                  {user.isVerified ? (
+                    <div className="py-8">
+                      <CheckCircle2 size={64} className="text-green-500 mx-auto mb-4" />
+                      <p className="text-green-500 font-bold text-lg">Verified Successfully!</p>
+                      <p className="text-zinc-400 text-sm mt-2">Your account has been verified.</p>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-zinc-400 text-sm">
+                        Verify your identity to unlock additional features and earn <span className="text-green-500 font-bold">+50 bonus points</span>.
+                      </p>
+
+                      {!isVerifying && !capturedImage && (
+                        <div className="py-8 space-y-4">
+                          <Camera size={64} className="text-[#0088CC] mx-auto" />
+                          <div className="space-y-2 text-left bg-black/20 p-4 rounded-lg">
+                            <p className="text-xs text-zinc-400">📸 Make sure:</p>
+                            <ul className="text-xs text-zinc-400 space-y-1 list-disc list-inside">
+                              <li>Your face is clearly visible</li>
+                              <li>Good lighting conditions</li>
+                              <li>Look directly at camera</li>
+                              <li>Remove glasses if possible</li>
+                            </ul>
+                          </div>
+                          <Button onClick={startVerification}>
+                            <Camera size={20} />
+                            Start Verification
+                          </Button>
+                        </div>
+                      )}
+
+                      {isVerifying && (
+                        <div className="space-y-4">
+                          <div className="relative bg-black rounded-xl overflow-hidden">
+                            <video 
+                              ref={videoRef}
+                              autoPlay 
+                              playsInline
+                              className="w-full rounded-xl"
+                            />
+                            <div className="absolute inset-0 border-4 border-[#0088CC]/50 rounded-xl pointer-events-none">
+                              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-64 border-2 border-green-500 rounded-full"></div>
+                            </div>
+                          </div>
+                          <canvas ref={canvasRef} className="hidden" />
+                          <div className="flex gap-3">
+                            <Button onClick={stopCamera} variant="secondary" className="flex-1">
+                              Cancel
+                            </Button>
+                            <Button onClick={capturePhoto} className="flex-1">
+                              <Camera size={20} />
+                              Capture
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
+                      {capturedImage && (
+                        <div className="space-y-4">
+                          <img 
+                            src={capturedImage} 
+                            alt="Captured" 
+                            className="w-full rounded-xl border-2 border-[#0088CC]"
+                          />
+                          <div className="flex gap-3">
+                            <Button onClick={retakePhoto} variant="secondary" className="flex-1">
+                              Retake
+                            </Button>
+                            <Button onClick={submitVerification} variant="success" className="flex-1">
+                              <CheckCircle2 size={20} />
+                              Submit
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </Card>
+            </motion.div>
+          )}
+
           {activeTab === "profile" && (
             <motion.div
               key="profile"
@@ -493,7 +685,6 @@ export default function AirdropApp() {
                   </div>
                 </div>
                 
-                {/* Points Statistics */}
                 <div className="border-t border-white/10 pt-4 space-y-3">
                   <div className="flex justify-between items-center">
                     <div className="flex items-center gap-2">
@@ -527,6 +718,29 @@ export default function AirdropApp() {
                       <div className="text-xs text-zinc-500">{user.accountAgeYears.toFixed(1)} years</div>
                     </div>
                   </div>
+
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center gap-2">
+                      <ShieldCheck size={16} className="text-green-400" />
+                      <span className="text-zinc-400 text-sm">Verification Status</span>
+                    </div>
+                    <div className="text-right">
+                      {user.isVerified ? (
+                        <>
+                          <div className="text-green-500 font-bold flex items-center gap-1 justify-end">
+                            <CheckCircle2 size={14} />
+                            Verified
+                          </div>
+                          <div className="text-xs text-zinc-500">+50 pts earned</div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="text-zinc-400 font-bold">Not Verified</div>
+                          <div className="text-xs text-zinc-500">Tap Verify tab</div>
+                        </>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </Card>
 
@@ -555,7 +769,6 @@ export default function AirdropApp() {
                 )}
               </Card>
 
-              {/* Wallet Address - Coming Soon */}
               <Card className="relative overflow-hidden">
                 <div className="absolute top-2 right-2 bg-yellow/20 text-yellow text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider">
                   Coming Soon
@@ -593,24 +806,30 @@ export default function AirdropApp() {
         </AnimatePresence>
       </main>
 
-      <nav className="fixed bottom-0 left-0 right-0 bg-black/90 backdrop-blur-md border-t border-white/10 px-6 py-4 z-50">
+      <nav className="fixed bottom-0 left-0 right-0 bg-black/90 backdrop-blur-md border-t border-white/10 px-4 py-4 z-50">
         <div className="flex justify-around max-w-md mx-auto">
           <NavButton 
             active={activeTab === "home"} 
             onClick={() => setActiveTab("home")} 
-            icon={<Trophy size={24} />} 
+            icon={<Trophy size={22} />} 
             label="Home" 
           />
           <NavButton 
             active={activeTab === "referral"} 
             onClick={() => setActiveTab("referral")} 
-            icon={<Users size={24} />} 
+            icon={<Users size={22} />} 
             label="Referral" 
+          />
+          <NavButton 
+            active={activeTab === "verify"} 
+            onClick={() => setActiveTab("verify")} 
+            icon={<ShieldCheck size={22} />} 
+            label="Verify" 
           />
           <NavButton 
             active={activeTab === "profile"} 
             onClick={() => setActiveTab("profile")} 
-            icon={<UserIcon size={24} />} 
+            icon={<UserIcon size={22} />} 
             label="Profile" 
           />
         </div>
@@ -626,7 +845,7 @@ function NavButton({ active, onClick, icon, label }: any) {
       className={`flex flex-col items-center gap-1 transition-colors ${active ? "text-[#0088CC]" : "text-zinc-600 hover:text-zinc-400"}`}
     >
       {icon}
-      <span className="text-[10px] font-bold uppercase tracking-wider">{label}</span>
+      <span className="text-[9px] font-bold uppercase tracking-wider">{label}</span>
     </button>
   );
 }

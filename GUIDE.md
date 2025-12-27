@@ -32,12 +32,8 @@ Pastikan Anda telah mengatur variabel berikut di **Secrets (Tools > Secrets)**:
 ### B. Konfigurasi Adsgram
 Buka `lib/adsgram.ts` dan ganti `YOUR_ZONE_ID` dengan ID blok iklan yang Anda dapatkan dari dashboard Adsgram.
 
-### C. Pengembangan Lokal
-Untuk menjalankan aplikasi dalam mode pengembangan:
-```bash
-npm run dev -- -p 5000
-```
-Aplikasi akan berjalan di port 5000 agar bisa diakses oleh proxy Replit.
+### D. Database Schema
+Saya telah menyertakan file `supabase_schema.sql`. Silakan salin isinya dan tempelkan ke **SQL Editor** di dashboard Supabase Anda untuk membuat tabel dengan keamanan Row Level Security (RLS) yang sudah dikonfigurasi.
 
 ## 4. Struktur Folder Utama
 - `/app`: Halaman dan layout aplikasi.

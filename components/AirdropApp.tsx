@@ -108,30 +108,10 @@ export default function AirdropApp() {
             referrals: 0
           });
         } else {
-          // New user - fetch real account age from Telegram
-          let accountAge = 0;
-          let isEligible = false;
-          
-          try {
-            // Call our API to get real Telegram account age
-            const ageResponse = await fetch('/api/telegram-age', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ telegramId })
-            });
-            
-            if (ageResponse.ok) {
-              const ageData = await ageResponse.json();
-              accountAge = ageData.accountAgeYears || 0;
-              isEligible = accountAge >= 1;
-            }
-          } catch (err) {
-            console.error('Failed to get account age:', err);
-            // Fallback: assume not eligible if we can't verify
-            accountAge = 0;
-            isEligible = false;
-          }
-
+          // New user - estimate account age based on Telegram User ID
+          const userId = parseInt(telegramId);
+          const accountAge = estimateAccountAge(userId);
+          const isEligible = accountAge >= 1;
           const initialPoints = isEligible ? Math.floor(accountAge * 1000) : 0;
 
           const { data: newUser, error: insertError } = await supabase
@@ -178,10 +158,24 @@ export default function AirdropApp() {
     return () => clearInterval(timer);
   }, []);
 
-  const calculateAccountAge = (createdDate: Date): number => {
-    const now = new Date();
-    const diffMs = now.getTime() - createdDate.getTime();
-    return diffMs / (1000 * 60 * 60 * 24 * 365.25);
+  const estimateAccountAge = (userId: number): number => {
+    // Telegram user IDs are assigned sequentially
+    // Lower IDs = older accounts
+    if (userId < 100000000) {
+      return 10; // Very old (2013-2015)
+    } else if (userId < 500000000) {
+      return 7; // Old (2015-2018)
+    } else if (userId < 1000000000) {
+      return 5; // Medium (2018-2020)
+    } else if (userId < 2000000000) {
+      return 3; // Recent (2020-2022)
+    } else if (userId < 5000000000) {
+      return 1.5; // New (2022-2023)
+    } else if (userId < 7000000000) {
+      return 0.7; // Very new (2023-2024)
+    } else {
+      return 0.3; // Brand new (2024+)
+    }
   };
 
   useEffect(() => {

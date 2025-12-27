@@ -19,31 +19,6 @@ interface UserData {
   email: string | null;
 }
 
-// --- Components ---
-
-function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return <div className={`card-3d p-4 ${className}`}>{children}</div>;
-}
-
-function Button({ onClick, children, className = "", disabled = false, variant = "primary" }: any) {
-  const base = "w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 btn-3d select-none";
-  const styles = {
-    primary: "bg-[#0088CC] text-white",
-    secondary: "bg-zinc-800 text-white border border-zinc-700",
-    disabled: "bg-zinc-700 text-zinc-400 cursor-not-allowed opacity-50 shadow-none transform-none",
-  };
-  
-  return (
-    <button 
-      onClick={onClick} 
-      disabled={disabled}
-      className={`${base} ${disabled ? styles.disabled : (variant === "primary" ? styles.primary : styles.secondary)} ${className}`}
-    >
-      {children}
-    </button>
-  );
-}
-
 // --- Main Page ---
 
 export default function Home() {
@@ -63,17 +38,18 @@ export default function Home() {
     const init = async () => {
       if (typeof window === 'undefined') return;
       
-      // Strict Production: Must have Telegram WebApp
-      if (!window.Telegram?.WebApp?.initDataUnsafe?.user) {
+      // Use any to avoid TS errors with window.Telegram
+      const webApp = (window as any).Telegram?.WebApp;
+      
+      if (!webApp?.initDataUnsafe?.user) {
         setLoading(false);
         return;
       }
 
-      const tgUser = window.Telegram.WebApp.initDataUnsafe.user;
+      const tgUser = webApp.initDataUnsafe.user;
       const tgId = tgUser.id;
 
       try {
-        // Fetch user from Supabase
         let { data, error } = await supabase
           .from('users')
           .select('*')
@@ -81,12 +57,11 @@ export default function Home() {
           .single();
 
         if (error && error.code === 'PGRST116') {
-          // New User
           const newUser = {
             telegram_id: tgId,
             username: tgUser.username || '',
             first_name: tgUser.first_name || '',
-            points: 100, // Starting points
+            points: 100,
             ton_balance: 0,
             is_eligible: true,
             last_check_in: null,
@@ -118,7 +93,6 @@ export default function Home() {
     return () => clearInterval(timer);
   }, []);
 
-  // Countdown Logic
   useEffect(() => {
     const now = new Date();
     const diff = AIRDROP_END_DATE.getTime() - now.getTime();
@@ -136,7 +110,6 @@ export default function Home() {
     setTimeLeft(`${days}d ${hours}h ${minutes}m ${seconds}s`);
   }, [currentTime]);
 
-  // Check-in Logic
   useEffect(() => {
     if (!user?.last_check_in) {
       setNextCheckIn(null);
@@ -174,8 +147,9 @@ export default function Home() {
 
       if (!error && data) {
         setUser(data);
-        if (window.Telegram?.WebApp) {
-          window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
+        const webApp = (window as any).Telegram?.WebApp;
+        if (webApp) {
+          webApp.HapticFeedback.notificationOccurred('success');
         }
       }
     }, (err) => {
@@ -309,7 +283,8 @@ export default function Home() {
                   </div>
                   <Button onClick={() => {
                     const url = `https://t.me/share/url?url=https://t.me/tonline_bot?start=${user.telegram_id}&text=Join Tonline Airdrop!`;
-                    if (window.Telegram?.WebApp) window.Telegram.WebApp.openTelegramLink(url);
+                    const webApp = (window as any).Telegram?.WebApp;
+                    if (webApp) webApp.openTelegramLink(url);
                     else window.open(url, '_blank');
                   }}>Undang</Button>
                 </div>
@@ -371,6 +346,29 @@ function NavButton({ active, onClick, icon, label }: any) {
     <button onClick={onClick} className={`flex flex-col items-center gap-1 transition-colors ${active ? "text-[#0088CC]" : "text-zinc-600"}`}>
       {icon}
       <span className="text-[10px] font-bold uppercase">{label}</span>
+    </button>
+  );
+}
+
+function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return <div className={`card-3d p-4 ${className}`}>{children}</div>;
+}
+
+function Button({ onClick, children, className = "", disabled = false, variant = "primary" }: any) {
+  const base = "w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 btn-3d select-none";
+  const styles = {
+    primary: "bg-[#0088CC] text-white",
+    secondary: "bg-zinc-800 text-white border border-zinc-700",
+    disabled: "bg-zinc-700 text-zinc-400 cursor-not-allowed opacity-50 shadow-none transform-none",
+  };
+  
+  return (
+    <button 
+      onClick={onClick} 
+      disabled={disabled}
+      className={`${base} ${disabled ? styles.disabled : (variant === "primary" ? styles.primary : styles.secondary)} ${className}`}
+    >
+      {children}
     </button>
   );
 }

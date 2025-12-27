@@ -7,7 +7,7 @@ import { CheckCircle2, XCircle, Clock, Calendar, Users, Wallet, Trophy, User as 
 import { formatDistanceToNow } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
 
-// Direct initialization to avoid any potential env issues in lib/supabase.ts
+// Direct initialization
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
@@ -50,7 +50,6 @@ export default function Home() {
       if (webApp) {
         webApp.ready();
         webApp.expand();
-        log("WebApp Ready");
       }
 
       const attemptFetch = async () => {
@@ -58,12 +57,7 @@ export default function Home() {
         const tgUser = currentWebApp?.initDataUnsafe?.user;
         const tgId = tgUser?.id;
         
-        if (!tgId) {
-          log("No TG ID found yet...");
-          return false;
-        }
-
-        log(`Found ID: ${tgId}. Connecting DB...`);
+        if (!tgId) return false;
 
         try {
           const { data, error } = await supabase
@@ -79,8 +73,6 @@ export default function Home() {
 
           if (!data) {
             log("User missing. Registering...");
-            
-            // Simplified registration without email field to ensure basic access works
             const newUser: any = {
               telegram_id: tgId,
               username: tgUser.username || '',
@@ -98,30 +90,20 @@ export default function Home() {
               .maybeSingle();
 
             if (createError) {
-              log(`Reg Error: ${createError.message}`);
-              // Last ditch effort: try without any optional fields
-              const { data: retry, error: retryError } = await supabase
+              const { data: retry } = await supabase
                 .from('users')
                 .insert([{ telegram_id: tgId }])
                 .select()
                 .maybeSingle();
-                
-              if (retryError) {
-                log(`Critical: ${retryError.message}`);
-                return false;
-              }
               setUser(retry);
             } else {
               setUser(created);
             }
-            log("Registered!");
           } else {
-            log("User loaded!");
             setUser(data);
           }
           return true;
         } catch (err: any) {
-          log(`Fatal: ${err.message || 'Unknown'}`);
           return false;
         }
       };
@@ -133,7 +115,6 @@ export default function Home() {
         if (success || attempts >= 40) {
           clearInterval(interval);
           setLoading(false);
-          if (!success) log("Auth timeout.");
         }
       }, 250);
     };
@@ -204,9 +185,6 @@ export default function Home() {
   if (loading) return (
     <div className="flex flex-col items-center justify-center min-h-screen">
       <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#0088CC] mb-4"></div>
-      <div className="text-[10px] text-zinc-500 font-mono text-center px-4">
-        {debugLog.map((l, i) => <div key={i}>{l}</div>)}
-      </div>
     </div>
   );
 
@@ -217,19 +195,7 @@ export default function Home() {
         <XCircle size={64} className="text-red-500 mb-4" />
         <h1 className="text-xl font-bold mb-2">Akses Ditolak</h1>
         <p className="text-zinc-400 mb-6">Buka aplikasi ini melalui Telegram Mini App.</p>
-        
-        <div className="w-full bg-zinc-900/50 border border-zinc-800 rounded-xl p-4 text-left font-mono text-[10px] space-y-1">
-          <div className="flex items-center gap-2 text-zinc-500 mb-2 border-b border-zinc-800 pb-2">
-            <AlertCircle size={12} />
-            <span>SISTEM DIAGNOSTIK</span>
-          </div>
-          <div className="flex justify-between"><span className="text-zinc-500">USER_ID:</span> <span>{tgId || "NULL"}</span></div>
-          <div className="flex justify-between"><span className="text-zinc-500">DB_STATUS:</span> <span>{debugLog[debugLog.length-1]?.includes('DB Error') ? 'FAILED' : 'CONNECTED'}</span></div>
-          <div className="mt-2 pt-2 border-t border-zinc-800 text-zinc-600">
-            {debugLog.map((l, i) => <div key={i} className="truncate">• {l}</div>)}
-          </div>
-        </div>
-        
+        <div className="text-[10px] text-zinc-600 font-mono">ID: {tgId || "Tidak Terdeteksi"}</div>
         <Button className="mt-8" onClick={() => window.location.reload()}>Coba Lagi</Button>
       </div>
     );
@@ -250,7 +216,7 @@ export default function Home() {
             <CheckCircle2 size={24} className="text-green-500" />
             <h2 className="text-lg font-bold text-green-500">Akun Terverifikasi</h2>
           </div>
-          <p className="text-zinc-400 text-sm">Halo, <span className="text-white font-bold">{user.first_name || user.username}</span></p>
+          <p className="text-zinc-400 text-sm">Halo, <span className="text-white font-bold">{user.first_name || user.username || 'User'}</span></p>
         </Card>
         <AnimatePresence mode="wait">
           {activeTab === "home" && (

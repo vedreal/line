@@ -19,8 +19,6 @@ interface UserData {
   email: string | null;
 }
 
-// --- Main Page ---
-
 export default function Home() {
   const [activeTab, setActiveTab] = useState<"home" | "referral" | "profile">("home");
   const [user, setUser] = useState<UserData | null>(null);
@@ -31,106 +29,99 @@ export default function Home() {
   const [timeLeft, setTimeLeft] = useState("");
   const [currentTime, setCurrentTime] = useState(new Date());
 
-  // Airdrop Countdown
   const AIRDROP_END_DATE = new Date("2025-03-10T00:00:00Z");
 
   useEffect(() => {
     const init = async () => {
       if (typeof window === 'undefined') return;
-      
-      // Use any to avoid TS errors with window.Telegram
-      const webApp = (window as any).Telegram?.WebApp;
-      
-      // Wait for WebApp to be ready and check for user data
-      if (webApp) {
-        webApp.ready();
-        
-        if (!webApp.initDataUnsafe?.user) {
-          // If in development or running on local, you might want to bypass or mock
-          // But for production strictly within Telegram, this check is correct
-          setLoading(false);
-          return;
-        }
 
-        const tgUser = webApp.initDataUnsafe.user;
-        const tgId = tgUser.id;
+      const checkTelegram = async () => {
+        const webApp = (window as any).Telegram?.WebApp;
+        if (webApp && webApp.initDataUnsafe?.user) {
+          const tgUser = webApp.initDataUnsafe.user;
+          const tgId = tgUser.id;
 
-        try {
-          let { data, error } = await supabase
-            .from('users')
-            .select('*')
-            .eq('telegram_id', tgId)
-            .single();
-
-          if (error && error.code === 'PGRST116') {
-            const newUser = {
-              telegram_id: tgId,
-              username: tgUser.username || '',
-              first_name: tgUser.first_name || '',
-              points: 100,
-              ton_balance: 0,
-              is_eligible: true,
-              last_check_in: null,
-              email: null
-            };
-
-            const { data: createdUser, error: createError } = await supabase
+          try {
+            let { data, error } = await supabase
               .from('users')
-              .insert([newUser])
-              .select()
+              .select('*')
+              .eq('telegram_id', tgId)
               .single();
 
-            if (createError) throw createError;
-            setUser(createdUser);
-          } else if (data) {
-            setUser(data);
+            if (error && error.code === 'PGRST116') {
+              const newUser = {
+                telegram_id: tgId,
+                username: tgUser.username || '',
+                first_name: tgUser.first_name || '',
+                points: 100,
+                ton_balance: 0,
+                is_eligible: true,
+                last_check_in: null,
+                email: null
+              };
+
+              const { data: createdUser, error: createError } = await supabase
+                .from('users')
+                .insert([newUser])
+                .select()
+                .single();
+
+              if (!createError) setUser(createdUser);
+            } else if (data) {
+              setUser(data);
+            }
+          } catch (err) {
+            console.error("Supabase Error:", err);
+          } finally {
+            setLoading(false);
           }
-        } catch (err) {
-          console.error("Supabase Error:", err);
-        } finally {
+          return true;
+        }
+        return false;
+      };
+
+      // Try immediately
+      if (await checkTelegram()) return;
+
+      // Retry loop
+      let retries = 0;
+      const interval = setInterval(async () => {
+        retries++;
+        if (await checkTelegram() || retries > 10) {
+          clearInterval(interval);
           setLoading(false);
         }
-      } else {
-        // Not running in Telegram environment
-        setLoading(false);
+      }, 500);
+
+      const webApp = (window as any).Telegram?.WebApp;
+      if (webApp) {
+        webApp.ready();
+        webApp.expand();
       }
     };
     init();
 
-    const timer = setInterval(() => {
-      setCurrentTime(new Date());
-    }, 1000);
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
   useEffect(() => {
     const now = new Date();
     const diff = AIRDROP_END_DATE.getTime() - now.getTime();
-    
-    if (diff <= 0) {
-      setTimeLeft("Airdrop Ended");
-      return;
-    }
-    
+    if (diff <= 0) { setTimeLeft("Airdrop Ended"); return; }
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
     const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
     const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
     const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-    
     setTimeLeft(`${days}d ${hours}h ${minutes}m ${seconds}s`);
   }, [currentTime]);
 
   useEffect(() => {
-    if (!user?.last_check_in) {
-      setNextCheckIn(null);
-      return;
-    }
-    
+    if (!user?.last_check_in) { setNextCheckIn(null); return; }
     const lastCheck = new Date(user.last_check_in);
     const now = new Date();
     const lastCheckDay = new Date(lastCheck).setUTCHours(0,0,0,0);
     const currentDay = new Date(now).setUTCHours(0,0,0,0);
-    
     if (currentDay > lastCheckDay) {
       setNextCheckIn(null);
     } else {
@@ -143,74 +134,50 @@ export default function Home() {
 
   const handleCheckIn = async () => {
     if (!user) return;
-    
     showAd(async () => {
       const { data, error } = await supabase
         .from('users')
-        .update({ 
-          points: user.points + 10,
-          last_check_in: new Date().toISOString()
-        })
+        .update({ points: user.points + 10, last_check_in: new Date().toISOString() })
         .eq('telegram_id', user.telegram_id)
-        .select()
-        .single();
-
+        .select().single();
       if (!error && data) {
         setUser(data);
         const webApp = (window as any).Telegram?.WebApp;
-        if (webApp) {
-          webApp.HapticFeedback.notificationOccurred('success');
-        }
+        if (webApp) webApp.HapticFeedback.notificationOccurred('success');
       }
-    }, (err) => {
-      console.error("Adsgram Error:", err);
-      alert("Failed to load ad. Please try again later.");
-    });
+    }, (err) => alert("Ad failed to load."));
   };
 
   const handleEmailSubmit = async () => {
     if (!user || !emailInput) return;
-    
-    const allowedDomains = ['gmail.com', 'hotmail.com', 'outlook.com', 'yahoo.com', 'yandex.com'];
+    const allowed = ['gmail.com', 'hotmail.com', 'outlook.com', 'yahoo.com', 'yandex.com'];
     const domain = emailInput.split('@')[1];
-    
-    if (!emailInput.includes('@') || !allowedDomains.includes(domain)) {
-      setEmailError("Hanya Gmail, Hotmail, Outlook, Yahoo, Yandex.");
-      return;
+    if (!emailInput.includes('@') || !allowed.includes(domain)) {
+      setEmailError("Hanya Gmail, Hotmail, Outlook, Yahoo, Yandex."); return;
     }
-
     const { data, error } = await supabase
       .from('users')
       .update({ email: emailInput })
       .eq('telegram_id', user.telegram_id)
-      .select()
-      .single();
-
-    if (!error && data) {
-      setUser(data);
-      setEmailError("");
-    } else {
-      setEmailError("Gagal menyimpan email.");
-    }
+      .select().single();
+    if (!error && data) { setUser(data); setEmailError(""); }
+    else setEmailError("Gagal menyimpan email.");
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#0088CC]"></div>
-      </div>
-    );
-  }
+  if (loading) return (
+    <div className="flex items-center justify-center min-h-screen">
+      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#0088CC]"></div>
+    </div>
+  );
 
-  if (!user) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen p-6 text-center">
-        <XCircle size={64} className="text-red-500 mb-4" />
-        <h1 className="text-xl font-bold mb-2">Akses Ditolak</h1>
-        <p className="text-zinc-400">Silakan buka aplikasi ini melalui Telegram Mini App.</p>
-      </div>
-    );
-  }
+  if (!user) return (
+    <div className="flex flex-col items-center justify-center min-h-screen p-6 text-center">
+      <XCircle size={64} className="text-red-500 mb-4" />
+      <h1 className="text-xl font-bold mb-2">Akses Ditolak</h1>
+      <p className="text-zinc-400 mb-4">Silakan buka aplikasi ini melalui Telegram Mini App.</p>
+      <p className="text-xs text-zinc-600">ID: {(window as any).Telegram?.WebApp?.initDataUnsafe?.user?.id || 'Not Found'}</p>
+    </div>
+  );
 
   return (
     <div className="pb-20">
@@ -221,64 +188,36 @@ export default function Home() {
           <span className="text-sm font-medium">{(user.ton_balance || 0).toFixed(3)} TON</span>
         </div>
       </header>
-
       <main className="space-y-6">
         <Card className="border-[#0088CC]/30 bg-[#0088CC]/5">
           <div className="flex items-center gap-3 mb-2">
             <CheckCircle2 size={24} className="text-green-500" />
             <h2 className="text-lg font-bold text-green-500">Akun Terverifikasi</h2>
           </div>
-          <p className="text-zinc-400 text-sm">
-            Halo, <span className="text-white font-bold">{user.first_name || user.username}</span>
-          </p>
+          <p className="text-zinc-400 text-sm">Halo, <span className="text-white font-bold">{user.first_name || user.username}</span></p>
         </Card>
-
         <AnimatePresence mode="wait">
           {activeTab === "home" && (
-            <motion.div 
-              key="home"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              className="space-y-6"
-            >
+            <motion.div key="home" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-6">
               <Card>
                 <div className="flex justify-between items-center mb-4">
-                  <h3 className="font-bold text-lg flex items-center gap-2">
-                    <Calendar size={20} className="text-[#0088CC]" />
-                    Daily Check-in
-                  </h3>
+                  <h3 className="font-bold text-lg flex items-center gap-2"><Calendar size={20} className="text-[#0088CC]" /> Daily Check-in</h3>
                 </div>
                 {nextCheckIn ? (
                   <div className="text-center py-4 bg-black/20 rounded-lg border border-white/5">
                     <p className="text-zinc-500 text-sm mb-1">Kembali dalam</p>
                     <p className="text-xl font-mono font-bold">{formatDistanceToNow(nextCheckIn)}</p>
                   </div>
-                ) : (
-                  <Button onClick={handleCheckIn}>Check-in (+10 Pts)</Button>
-                )}
+                ) : <Button onClick={handleCheckIn}>Check-in (+10 Pts)</Button>}
               </Card>
-
               <Card className="relative overflow-hidden">
-                <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
-                  <Clock size={20} className="text-yellow" />
-                  Airdrop Selesai
-                </h3>
-                <div className="text-3xl font-black text-center py-4 font-mono tracking-wider bg-black/40 rounded-xl border border-white/5">
-                  {timeLeft}
-                </div>
+                <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><Clock size={20} className="text-yellow" /> Airdrop Selesai</h3>
+                <div className="text-3xl font-black text-center py-4 font-mono tracking-wider bg-black/40 rounded-xl border border-white/5">{timeLeft}</div>
               </Card>
             </motion.div>
           )}
-
           {activeTab === "referral" && (
-            <motion.div
-              key="referral"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              className="space-y-6"
-            >
+            <motion.div key="referral" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-6">
               <Card>
                 <div className="text-center space-y-4">
                   <Users size={32} className="text-[#0088CC] mx-auto" />
@@ -301,35 +240,19 @@ export default function Home() {
               </Card>
             </motion.div>
           )}
-
           {activeTab === "profile" && (
-            <motion.div
-              key="profile"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              className="space-y-6"
-            >
+            <motion.div key="profile" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-6">
               <Card className="bg-gradient-to-br from-[#0088CC]/20 to-black">
                 <div className="text-center py-4">
                   <div className="text-zinc-400 text-sm mb-1 uppercase">Total Poin</div>
                   <div className="text-5xl font-black text-white">{user.points.toLocaleString()}</div>
                 </div>
               </Card>
-
               <Card>
                 <h3 className="font-bold mb-4">Email</h3>
-                {user.email ? (
-                  <div className="p-3 bg-green-900/20 border border-green-500/30 rounded-lg text-green-500 font-mono text-sm">{user.email}</div>
-                ) : (
+                {user.email ? <div className="p-3 bg-green-900/20 border border-green-500/30 rounded-lg text-green-500 font-mono text-sm">{user.email}</div> : (
                   <div className="space-y-3">
-                    <input 
-                      type="email" 
-                      placeholder="Email" 
-                      value={emailInput}
-                      onChange={(e) => setEmailInput(e.target.value)}
-                      className="w-full bg-black border border-zinc-700 rounded-lg p-3 text-white focus:border-[#0088CC] outline-none"
-                    />
+                    <input type="email" placeholder="Email" value={emailInput} onChange={(e) => setEmailInput(e.target.value)} className="w-full bg-black border border-zinc-700 rounded-lg p-3 text-white focus:border-[#0088CC] outline-none" />
                     {emailError && <p className="text-red-500 text-xs">{emailError}</p>}
                     <Button onClick={handleEmailSubmit}>Simpan</Button>
                   </div>
@@ -339,7 +262,6 @@ export default function Home() {
           )}
         </AnimatePresence>
       </main>
-
       <nav className="fixed bottom-0 left-0 right-0 bg-black/90 backdrop-blur-md border-t border-white/10 px-6 py-4 z-50">
         <div className="flex justify-around max-w-md mx-auto">
           <NavButton active={activeTab === "home"} onClick={() => setActiveTab("home")} icon={<Trophy size={24} />} label="Home" />
@@ -371,13 +293,8 @@ function Button({ onClick, children, className = "", disabled = false, variant =
     secondary: "bg-zinc-800 text-white border border-zinc-700",
     disabled: "bg-zinc-700 text-zinc-400 cursor-not-allowed opacity-50 shadow-none transform-none",
   };
-  
   return (
-    <button 
-      onClick={onClick} 
-      disabled={disabled}
-      className={`${base} ${disabled ? styles.disabled : (variant === "primary" ? styles.primary : styles.secondary)} ${className}`}
-    >
+    <button onClick={onClick} disabled={disabled} className={`${base} ${disabled ? styles.disabled : (variant === "primary" ? styles.primary : styles.secondary)} ${className}`}>
       {children}
     </button>
   );

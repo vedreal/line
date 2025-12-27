@@ -37,7 +37,11 @@ export default function Home() {
 
       const checkTelegram = async () => {
         const webApp = (window as any).Telegram?.WebApp;
-        if (webApp && webApp.initDataUnsafe?.user) {
+        
+        // Use ID from UI if available as fallback for debugging
+        const userId = webApp?.initDataUnsafe?.user?.id;
+        
+        if (webApp && userId) {
           const tgUser = webApp.initDataUnsafe.user;
           const tgId = tgUser.id;
 

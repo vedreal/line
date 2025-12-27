@@ -134,7 +134,7 @@ export default function AirdropApp() {
             email: existingUser.email || null,
             referrals: 0,
             checkInCount: existingUser.check_in_count || 0,
-            checkInPoints: (existingUser.check_in_count || 0) * 10,
+            checkInPoints: (existingUser.check_in_count || 0) * 25,
             referralPoints: 0,
             referralTon: 0,
             isVerified: existingUser.is_verified || false
@@ -270,7 +270,7 @@ export default function AirdropApp() {
       const { error } = await supabase
         .from('users')
         .update({
-          points: user.points + 10,
+          points: user.points + 25,
           last_check_in: new Date().toISOString(),
           check_in_count: newCheckInCount
         })
@@ -280,17 +280,17 @@ export default function AirdropApp() {
 
       setUser({
         ...user,
-        points: user.points + 10,
+        points: user.points + 25,
         lastCheckIn: new Date().toISOString(),
         checkInCount: newCheckInCount,
-        checkInPoints: newCheckInCount * 10
+        checkInPoints: newCheckInCount * 25
       });
 
       const WebApp = (window as any).Telegram?.WebApp;
       if (WebApp?.showAlert) {
-        WebApp.showAlert('✅ Check-in successful! +10 points');
+        WebApp.showAlert('✅ Check-in successful! +25 points');
       } else {
-        alert('✅ Check-in successful! +10 points');
+        alert('✅ Check-in successful! +25 points');
       }
     } catch (err) {
       console.error('Check-in error:', err);
@@ -450,22 +450,22 @@ export default function AirdropApp() {
         .from('users')
         .update({ 
           is_verified: true,
-          points: user.points + 50,
+          points: user.points + 100,
           verification_image: capturedImage // Store for admin review
         })
         .eq('telegram_id', user.telegramId);
 
       if (error) throw error;
 
-      setUser({ ...user, isVerified: true, points: user.points + 50 });
+      setUser({ ...user, isVerified: true, points: user.points + 100 });
       setCapturedImage(null);
       setLoading(false);
       
       const WebApp = (window as any).Telegram?.WebApp;
       if (WebApp?.showAlert) {
-        WebApp.showAlert('✅ Verification successful! +50 points');
+        WebApp.showAlert('✅ Verification successful! +100 points');
       } else {
-        alert('✅ Verification successful! +50 points');
+        alert('✅ Verification successful! +100 points');
       }
     } catch (err) {
       console.error('Verification error:', err);
@@ -583,7 +583,7 @@ export default function AirdropApp() {
                   </div>
                 ) : (
                   <Button onClick={handleCheckIn}>
-                    Check-in (+10 Pts)
+                    Check-in (+25 Pts)
                   </Button>
                 )}
               </Card>
@@ -617,7 +617,7 @@ export default function AirdropApp() {
                   </div>
                   <h2 className="text-xl font-bold">Invite Friends</h2>
                   <p className="text-zinc-400 text-sm">
-                    Get <span className="text-white font-bold">5 pts</span> + <span className="text-white font-bold">0.002 TON</span> for each eligible friend.
+                    Get <span className="text-white font-bold">10 pts</span> + <span className="text-white font-bold">0.01 TON</span> for each eligible friend.
                   </p>
                   
                   <div className="bg-black/30 p-3 rounded-lg flex items-center justify-between border border-white/10">
@@ -663,7 +663,7 @@ export default function AirdropApp() {
                   ) : (
                     <>
                       <p className="text-zinc-400 text-sm">
-                        Verify your identity to unlock additional features and earn <span className="text-green-500 font-bold">+50 bonus points</span>.
+                        Verify your identity to unlock additional features and earn <span className="text-green-500 font-bold">+100 bonus points</span>.
                       </p>
 
                       {!isVerifying && !capturedImage && (
@@ -777,7 +777,7 @@ export default function AirdropApp() {
                     </div>
                     <div className="text-right">
                       <div className="text-white font-bold">{user.referralPoints} pts</div>
-                      <div className="text-xs text-zinc-500">{user.referralTon.toFixed(3)} TON</div>
+                      <div className="text-xs text-zinc-400">+ <span className="text-white font-bold">{user.referralTon.toFixed(2)} TON</span></div>
                     </div>
                   </div>
                   
@@ -804,7 +804,7 @@ export default function AirdropApp() {
                             <CheckCircle2 size={14} />
                             Verified
                           </div>
-                          <div className="text-xs text-zinc-500">+50 pts earned</div>
+                          <div className="text-xs text-zinc-500">+100 pts earned</div>
                         </>
                       ) : (
                         <>

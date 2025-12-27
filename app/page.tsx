@@ -131,12 +131,12 @@ export default function Home() {
   useEffect(() => {
     const now = new Date();
     const diff = AIRDROP_END_DATE.getTime() - now.getTime();
-    if (diff <= 0) { setTimeLeft("Airdrop Ended"); return; }
+    if (diff <= 0) { setTimeLeft("Airdrop Selesai"); return; }
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
     const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
     const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
     const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-    setTimeLeft(`${days}d ${hours}h ${minutes}m ${seconds}s`);
+    setTimeLeft(`${days}h ${hours}j ${minutes}m ${seconds}d`);
   }, [currentTime]);
 
   useEffect(() => {

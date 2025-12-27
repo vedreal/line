@@ -58,105 +58,125 @@ export default function AirdropApp() {
   const AIRDROP_END_DATE = new Date("2025-03-10T00:00:00Z");
 
   useEffect(() => {
-    const initUser = async () => {
-      try {
-        // Check if window is available
-        if (typeof window === 'undefined') return;
+  const initUser = async () => {
+    try {
+      if (typeof window === 'undefined') return;
 
-        // Get Telegram WebApp
-        const WebApp = (window as any).Telegram?.WebApp;
-        if (!WebApp) {
-          setError("Please open this app from Telegram");
-          setLoading(false);
-          return;
-        }
+      const WebApp = (window as any).Telegram?.WebApp;
+      if (!WebApp) {
+        setError("Please open this app from Telegram");
+        setLoading(false);
+        return;
+      }
 
-        const tgUser = WebApp.initDataUnsafe?.user;
+      const tgUser = WebApp.initDataUnsafe?.user;
+      if (!tgUser) {
+        setError("Unable to get Telegram user data");
+        setLoading(false);
+        return;
+      }
+
+      const telegramId = tgUser.id.toString();
+
+      // Check if user exists in DB
+      const { data: existingUser, error: fetchError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('telegram_id', telegramId)
+        .single();
+
+      if (fetchError && fetchError.code !== 'PGRST116') {
+        throw fetchError;
+      }
+
+      if (existingUser) {
+        // User exists - use saved account age from database
+        const accountAge = existingUser.account_age_years || 0;
         
-        if (!tgUser) {
-          setError("Unable to get Telegram user data");
-          setLoading(false);
-          return;
+        setUser({
+          telegramId: existingUser.telegram_id,
+          username: existingUser.username || tgUser.username || 'User',
+          points: existingUser.points || 0,
+          tonBalance: parseFloat(existingUser.ton_balance) || 0,
+          accountAgeYears: accountAge,
+          isEligible: accountAge >= 1,
+          lastCheckIn: existingUser.last_check_in,
+          email: existingUser.email || null,
+          referrals: 0
+        });
+      } else {
+        // New user - fetch account age from backend API
+        setFetchingAge(true);
+        
+        let accountAge = 0;
+        try {
+          const response = await fetch('/api/telegram-age', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ telegramId })
+          });
+          
+          if (response.ok) {
+            const data = await response.json();
+            accountAge = data.accountAgeYears || 0;
+          } else {
+            // Fallback to estimation
+            accountAge = estimateAccountAge(parseInt(telegramId));
+          }
+        } catch (apiError) {
+          console.error('API error, using fallback:', apiError);
+          accountAge = estimateAccountAge(parseInt(telegramId));
+        } finally {
+          setFetchingAge(false);
         }
 
-        const telegramId = tgUser.id.toString();
+        const isEligible = accountAge >= 1;
+        const initialPoints = isEligible ? Math.floor(accountAge * 1000) : 0;
 
-        // Fetch from Supabase
-        const { data: existingUser, error: fetchError } = await supabase
+        // Save to database with account_age_years
+        const { data: newUser, error: insertError } = await supabase
           .from('users')
-          .select('*')
-          .eq('telegram_id', telegramId)
+          .insert({
+            telegram_id: telegramId,
+            username: tgUser.username || null,
+            first_name: tgUser.first_name || null,
+            points: initialPoints,
+            account_age_years: accountAge,
+          })
+          .select()
           .single();
 
-        if (fetchError && fetchError.code !== 'PGRST116') {
-          throw fetchError;
-        }
+        if (insertError) throw insertError;
 
-        if (existingUser) {
-          // Use saved account age from database (calculated once at registration)
-          const accountAge = existingUser.account_age_years || 0;
-          
-          setUser({
-            telegramId: existingUser.telegram_id,
-            username: existingUser.username || tgUser.username || 'User',
-            points: existingUser.points || 0,
-            tonBalance: parseFloat(existingUser.ton_balance) || 0,
-            accountAgeYears: accountAge,
-            isEligible: accountAge >= 1,
-            lastCheckIn: existingUser.last_check_in,
-            email: existingUser.email || null,
-            referrals: 0
-          });
-        } else {
-          // New user - estimate account age based on Telegram User ID
-          const userId = parseInt(telegramId);
-          const accountAge = estimateAccountAge(userId);
-          const isEligible = accountAge >= 1;
-          const initialPoints = isEligible ? Math.floor(accountAge * 1000) : 0;
-
-          const { data: newUser, error: insertError } = await supabase
-            .from('users')
-            .insert({
-              telegram_id: telegramId,
-              username: tgUser.username || null,
-              first_name: tgUser.first_name || null,
-              points: initialPoints,
-              account_age_years: accountAge,
-            })
-            .select()
-            .single();
-
-          if (insertError) throw insertError;
-
-          setUser({
-            telegramId: newUser.telegram_id,
-            username: newUser.username || tgUser.username || 'User',
-            points: newUser.points || 0,
-            tonBalance: 0,
-            accountAgeYears: accountAge,
-            isEligible,
-            lastCheckIn: null,
-            email: null,
-            referrals: 0
-          });
-        }
-
-      } catch (err) {
-        console.error('Init error:', err);
-        setError('Failed to load user data');
-      } finally {
-        setLoading(false);
+        setUser({
+          telegramId: newUser.telegram_id,
+          username: newUser.username || tgUser.username || 'User',
+          points: newUser.points || 0,
+          tonBalance: 0,
+          accountAgeYears: accountAge,
+          isEligible,
+          lastCheckIn: null,
+          email: null,
+          referrals: 0
+        });
       }
-    };
 
-    initUser();
+    } catch (err) {
+      console.error('Init error:', err);
+      setError('Failed to load user data');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    const timer = setInterval(() => {
-      setCurrentTime(new Date());
-    }, 1000);
+  initUser();
 
-    return () => clearInterval(timer);
-  }, []);
+  const timer = setInterval(() => {
+    setCurrentTime(new Date());
+  }, 1000);
+
+  return () => clearInterval(timer);
+}, []);
 
   const estimateAccountAge = (userId: number): number => {
     // Telegram user IDs are assigned sequentially

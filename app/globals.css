@@ -1,0 +1,57 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --ton-blue: #0088CC;
+    --ton-dark: #006699;
+    --background: 0 0% 0%;
+    --foreground: 0 0% 100%;
+  }
+}
+
+body {
+  background-color: black;
+  color: white;
+  font-family: var(--font-fredoka), sans-serif;
+}
+
+.ton-gradient {
+  background: linear-gradient(135deg, #0088CC 0%, #006699 100%);
+}
+
+.card-3d {
+  background: #1a1a1a;
+  border-radius: 16px;
+  box-shadow: 
+    0 4px 6px -1px rgba(0, 0, 0, 0.5),
+    0 2px 4px -1px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card-3d:active {
+  transform: translateY(2px);
+  box-shadow: 
+    0 2px 4px -1px rgba(0, 0, 0, 0.5),
+    0 1px 2px -1px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.btn-3d {
+  transition: all 0.1s;
+  box-shadow: 0px 4px 0px 0px rgba(0,0,0,0.4);
+}
+.btn-3d:active {
+  transform: translateY(4px);
+  box-shadow: 0px 0px 0px 0px rgba(0,0,0,0.4);
+}
+
+.text-yellow {
+  color: #FFD700;
+}
+.text-red {
+  color: #FF4444;
+}

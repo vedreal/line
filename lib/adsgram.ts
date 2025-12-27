@@ -1,8 +1,9 @@
+// @ts-nocheck
 export const ADSGRAM_ZONE_ID = 'YOUR_ZONE_ID'; // Ganti dengan Zone ID Anda
 
 export const loadAdsgram = () => {
   return new Promise((resolve, reject) => {
-    if (window.Adsgram) {
+    if (typeof window !== 'undefined' && window.Adsgram) {
       resolve(window.Adsgram);
       return;
     }

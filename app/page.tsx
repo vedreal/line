@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabase";
 import { CheckCircle2, XCircle, Clock, Calendar, Users, Wallet, Trophy, User as UserIcon, LogOut } from "lucide-react";
-import { formatDistanceToNow, addDays, isAfter } from "date-fns";
+import { formatDistanceToNow } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
+import WebApp from "@twa-dev/sdk";
 
 // --- Types ---
 interface UserData {
@@ -19,21 +20,7 @@ interface UserData {
   referrals: number;
 }
 
-// --- Mock Data / Helpers ---
-const MOCK_USER: UserData = {
-  telegramId: "123456789",
-  username: "CryptoUser",
-  points: 0,
-  tonBalance: 0,
-  accountAgeYears: 0,
-  isEligible: false,
-  lastCheckIn: null,
-  email: null,
-  referrals: 0,
-};
-
 // --- Components ---
-
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return <div className={`card-3d p-4 ${className}`}>{children}</div>;
 }
@@ -58,7 +45,6 @@ function Button({ onClick, children, className = "", disabled = false, variant =
 }
 
 // --- Main Page ---
-
 export default function Home() {
   const [activeTab, setActiveTab] = useState<"home" | "referral" | "profile">("home");
   const [user, setUser] = useState<UserData | null>(null);
@@ -68,49 +54,110 @@ export default function Home() {
   const [nextCheckIn, setNextCheckIn] = useState<Date | null>(null);
   const [timeLeft, setTimeLeft] = useState("");
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [error, setError] = useState<string | null>(null);
 
-  // Airdrop Countdown
   const AIRDROP_END_DATE = new Date("2025-03-10T00:00:00Z");
 
   useEffect(() => {
-    // Simulate Login / Fetch Data
-    const init = async () => {
-      // In a real app, we'd fetch from Supabase here using window.Telegram.WebApp.initData
-      // For now, we simulate a delay and mock data or load from localStorage
-      await new Promise(r => setTimeout(r, 1000));
-      
-      const stored = localStorage.getItem("tonline_user");
-      if (stored) {
-        setUser(JSON.parse(stored));
-      } else {
-        // First time mock login
-        const mockAge = Math.random() * 2 + 0.5; // Random age between 0.5 and 2.5 years
-        const eligible = mockAge >= 1;
-        const initialPoints = eligible ? Math.floor(mockAge * 1000) : 0;
+    const initUser = async () => {
+      try {
+        // Get Telegram user data
+        const tgUser = WebApp.initDataUnsafe?.user;
         
-        const newUser = {
-          ...MOCK_USER,
-          accountAgeYears: mockAge,
-          isEligible: eligible,
-          points: initialPoints,
-        };
-        setUser(newUser);
-        localStorage.setItem("tonline_user", JSON.stringify(newUser));
-      }
-      setLoading(false);
-    };
-    init();
+        if (!tgUser) {
+          setError("Unable to get Telegram user data. Please open this app from Telegram.");
+          setLoading(false);
+          return;
+        }
 
-    // Timer Interval
+        const telegramId = tgUser.id.toString();
+
+        // Fetch user from Supabase
+        const { data: existingUser, error: fetchError } = await supabase
+          .from('users')
+          .select('*')
+          .eq('telegram_id', telegramId)
+          .single();
+
+        if (fetchError && fetchError.code !== 'PGRST116') {
+          throw fetchError;
+        }
+
+        if (existingUser) {
+          // Calculate account age from created_at
+          const accountAge = calculateAccountAge(new Date(existingUser.created_at));
+          
+          setUser({
+            telegramId: existingUser.telegram_id,
+            username: existingUser.username || tgUser.username || 'User',
+            points: existingUser.points || 0,
+            tonBalance: parseFloat(existingUser.ton_balance) || 0,
+            accountAgeYears: accountAge,
+            isEligible: accountAge >= 1,
+            lastCheckIn: existingUser.last_check_in,
+            email: existingUser.email || null,
+            referrals: 0 // Will be fetched separately
+          });
+        } else {
+          // Create new user
+          const accountAge = Math.random() * 2 + 0.5; // In production, get real Telegram account age
+          const isEligible = accountAge >= 1;
+          const initialPoints = isEligible ? Math.floor(accountAge * 1000) : 0;
+
+          const { data: newUser, error: insertError } = await supabase
+            .from('users')
+            .insert({
+              telegram_id: telegramId,
+              username: tgUser.username || null,
+              first_name: tgUser.first_name || null,
+              points: initialPoints,
+            })
+            .select()
+            .single();
+
+          if (insertError) throw insertError;
+
+          setUser({
+            telegramId: newUser.telegram_id,
+            username: newUser.username || tgUser.username || 'User',
+            points: newUser.points || 0,
+            tonBalance: 0,
+            accountAgeYears: accountAge,
+            isEligible,
+            lastCheckIn: null,
+            email: null,
+            referrals: 0
+          });
+        }
+
+      } catch (err) {
+        console.error('Init error:', err);
+        setError('Failed to load user data. Please try again.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    initUser();
+
+    // Timer for countdown
     const timer = setInterval(() => {
       setCurrentTime(new Date());
     }, 1000);
+
     return () => clearInterval(timer);
   }, []);
 
+  // Helper function to calculate account age
+  const calculateAccountAge = (createdDate: Date): number => {
+    const now = new Date();
+    const diffMs = now.getTime() - createdDate.getTime();
+    const years = diffMs / (1000 * 60 * 60 * 24 * 365.25);
+    return years;
+  };
+
   // Countdown Logic
   useEffect(() => {
-    if (!AIRDROP_END_DATE) return;
     const now = new Date();
     const diff = AIRDROP_END_DATE.getTime() - now.getTime();
     
@@ -129,19 +176,20 @@ export default function Home() {
 
   // Check-in Logic
   useEffect(() => {
-    if (!user?.lastCheckIn) return;
+    if (!user?.lastCheckIn) {
+      setNextCheckIn(null);
+      return;
+    }
     
     const lastCheck = new Date(user.lastCheckIn);
     const now = new Date();
     
-    // Check if next UTC day has started
     const lastCheckDay = new Date(lastCheck).setUTCHours(0,0,0,0);
     const currentDay = new Date(now).setUTCHours(0,0,0,0);
     
     if (currentDay > lastCheckDay) {
-      setNextCheckIn(null); // Can check in
+      setNextCheckIn(null);
     } else {
-      // Next check in is tomorrow 00:00 UTC
       const tomorrow = new Date(now);
       tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
       tomorrow.setUTCHours(0, 0, 0, 0);
@@ -152,21 +200,42 @@ export default function Home() {
   const handleCheckIn = async () => {
     if (!user) return;
     
-    // Simulate Adsgram
-    const confirmed = confirm("Watch ad to claim 10 points?");
-    if (!confirmed) return;
+    // Show Adsgram ad
+    try {
+      const { loadAdsgram } = await import('@/lib/adsgram');
+      await loadAdsgram();
+      
+      const AdController = window.Adsgram.init({ blockId: process.env.NEXT_PUBLIC_ADSGRAM_ZONE_ID });
+      
+      const result = await AdController.show();
+      
+      if (result.done) {
+        // Update points in Supabase
+        const { error } = await supabase
+          .from('users')
+          .update({
+            points: user.points + 10,
+            last_check_in: new Date().toISOString()
+          })
+          .eq('telegram_id', user.telegramId);
 
-    const updatedUser = {
-      ...user,
-      points: user.points + 10,
-      lastCheckIn: new Date().toISOString()
-    };
-    
-    setUser(updatedUser);
-    localStorage.setItem("tonline_user", JSON.stringify(updatedUser));
+        if (error) throw error;
+
+        setUser({
+          ...user,
+          points: user.points + 10,
+          lastCheckIn: new Date().toISOString()
+        });
+
+        WebApp.showAlert('✅ Check-in successful! +10 points');
+      }
+    } catch (err) {
+      console.error('Check-in error:', err);
+      WebApp.showAlert('Failed to complete check-in. Please try again.');
+    }
   };
 
-  const handleEmailSubmit = () => {
+  const handleEmailSubmit = async () => {
     if (!user) return;
     
     const allowedDomains = ['gmail.com', 'hotmail.com', 'outlook.com', 'yahoo.com', 'yandex.com'];
@@ -177,24 +246,39 @@ export default function Home() {
       return;
     }
 
-    const updatedUser = {
-      ...user,
-      email: emailInput
-    };
-    setUser(updatedUser);
-    localStorage.setItem("tonline_user", JSON.stringify(updatedUser));
-    setEmailError("");
-  };
+    try {
+      const { error } = await supabase
+        .from('users')
+        .update({ email: emailInput })
+        .eq('telegram_id', user.telegramId);
 
-  const resetAccount = () => {
-    localStorage.removeItem("tonline_user");
-    window.location.reload();
+      if (error) throw error;
+
+      setUser({ ...user, email: emailInput });
+      setEmailError("");
+      WebApp.showAlert('✅ Email saved successfully!');
+    } catch (err) {
+      console.error('Email save error:', err);
+      WebApp.showAlert('Failed to save email. Please try again.');
+    }
   };
 
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#0088CC]"></div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-screen p-4">
+        <Card className="text-center border-red-500/50">
+          <XCircle size={48} className="text-red-500 mx-auto mb-4" />
+          <h2 className="text-xl font-bold mb-2">Error</h2>
+          <p className="text-zinc-400">{error}</p>
+        </Card>
       </div>
     );
   }
@@ -224,7 +308,6 @@ export default function Home() {
                 Your Telegram account is {user.accountAgeYears.toFixed(1)} years old. 
                 Minimum requirement is 1 year.
               </p>
-              <Button onClick={resetAccount} variant="secondary" className="mt-2 text-xs py-2">Reset (Demo Only)</Button>
             </div>
           </Card>
         ) : (
@@ -310,37 +393,23 @@ export default function Home() {
                   </p>
                   
                   <div className="bg-black/30 p-3 rounded-lg flex items-center justify-between border border-white/10">
-                    <code className="text-sm text-zinc-300">t.me/tonline_bot?start={user.telegramId}</code>
-                    <button className="text-[#0088CC] text-xs font-bold uppercase" onClick={() => alert("Copied!")}>Copy</button>
+                    <code className="text-sm text-zinc-300 truncate">t.me/tonline_bot?start={user.telegramId}</code>
+                    <button 
+                      className="text-[#0088CC] text-xs font-bold uppercase ml-2" 
+                      onClick={() => {
+                        navigator.clipboard.writeText(`https://t.me/tonline_bot?start=${user.telegramId}`);
+                        WebApp.showAlert('✅ Link copied!');
+                      }}
+                    >
+                      Copy
+                    </button>
                   </div>
                   
-                  <Button>Invite Friends</Button>
+                  <Button onClick={() => WebApp.openTelegramLink(`https://t.me/share/url?url=https://t.me/tonline_bot?start=${user.telegramId}&text=Join Tonline Airdrop!`)}>
+                    Invite Friends
+                  </Button>
                 </div>
               </Card>
-
-              <div className="space-y-3">
-                <h3 className="font-bold text-sm text-zinc-500 uppercase tracking-wider">Referral History</h3>
-                {user.referrals === 0 ? (
-                  <div className="text-center py-8 text-zinc-600">No referrals yet</div>
-                ) : (
-                   /* Mock list */
-                   [1, 2].map((i) => (
-                     <div key={i} className="flex items-center justify-between p-3 bg-zinc-900/50 rounded-lg border border-white/5">
-                       <div className="flex items-center gap-3">
-                         <div className="w-8 h-8 bg-zinc-800 rounded-full flex items-center justify-center text-xs font-bold">U{i}</div>
-                         <div>
-                           <div className="text-sm font-bold">User {i}</div>
-                           <div className="text-xs text-yellow">Eligible</div>
-                         </div>
-                       </div>
-                       <div className="text-right">
-                         <div className="text-sm font-bold text-[#0088CC]">+5 Pts</div>
-                         <div className="text-xs text-zinc-500">+0.002 TON</div>
-                       </div>
-                     </div>
-                   ))
-                )}
-              </div>
             </motion.div>
           )}
 
@@ -359,20 +428,6 @@ export default function Home() {
                   <div className="text-5xl font-black text-white drop-shadow-[0_0_15px_rgba(0,136,204,0.5)]">
                     {user.points.toLocaleString()}
                   </div>
-                </div>
-                <div className="grid grid-cols-3 gap-2 mt-4 pt-4 border-t border-white/10">
-                   <div className="text-center">
-                     <div className="text-xs text-zinc-500">Check-in</div>
-                     <div className="font-bold text-lg">{(user.points % 1000)}</div>
-                   </div>
-                   <div className="text-center border-l border-white/10">
-                     <div className="text-xs text-zinc-500">Age</div>
-                     <div className="font-bold text-lg">{Math.floor(user.accountAgeYears * 1000)}</div>
-                   </div>
-                   <div className="text-center border-l border-white/10">
-                     <div className="text-xs text-zinc-500">Ref</div>
-                     <div className="font-bold text-lg">0</div>
-                   </div>
                 </div>
               </Card>
 
@@ -411,12 +466,6 @@ export default function Home() {
                   Coming Soon
                 </div>
               </Card>
-
-              <div className="pt-4">
-                 <Button onClick={resetAccount} variant="secondary" className="text-red-500 border-red-900/30 hover:bg-red-950/20">
-                   <LogOut size={16} /> Reset Account (Demo)
-                 </Button>
-              </div>
             </motion.div>
           )}
         </AnimatePresence>
@@ -459,4 +508,4 @@ function NavButton({ active, onClick, icon, label }: any) {
       <span className="text-[10px] font-bold uppercase tracking-wider">{label}</span>
     </button>
   );
-}
+        }

@@ -35,7 +35,20 @@ export default function Home() {
     const init = async () => {
       if (typeof window === 'undefined') return;
 
-      const loadUser = async (tgUser: any) => {
+      const parseUserData = (rawInitData: string) => {
+        try {
+          const params = new URLSearchParams(rawInitData);
+          const userJson = params.get('user');
+          if (userJson) {
+            return JSON.parse(decodeURIComponent(userJson));
+          }
+        } catch (e) {
+          console.error("Failed to parse initData:", e);
+        }
+        return null;
+      };
+
+      const loadUserFromDB = async (tgUser: any) => {
         if (!tgUser?.id) return false;
         const tgId = tgUser.id;
 
@@ -85,25 +98,29 @@ export default function Home() {
           webApp.ready();
           webApp.expand();
           
-          // Try multiple sources of user data
-          const user = webApp.initDataUnsafe?.user || webApp.initData?.user;
+          // Try multiple sources of user data including parsing initData string
+          let user = webApp.initDataUnsafe?.user;
+          if (!user && webApp.initData) {
+            user = parseUserData(webApp.initData);
+          }
+          
           if (user) {
-            return await loadUser(user);
+            return await loadUserFromDB(user);
           }
         }
         return false;
       };
 
-      // Poll aggressively for 5 seconds
+      // Poll aggressively
       let attempts = 0;
       const interval = setInterval(async () => {
         attempts++;
         const success = await checkWebApp();
-        if (success || attempts > 20) {
+        if (success || attempts > 30) {
           clearInterval(interval);
           setLoading(false);
         }
-      }, 250);
+      }, 300);
     };
     
     init();
@@ -178,10 +195,7 @@ export default function Home() {
     <div className="flex flex-col items-center justify-center min-h-screen p-6 text-center">
       <XCircle size={64} className="text-red-500 mb-4" />
       <h1 className="text-xl font-bold mb-2">Akses Ditolak</h1>
-      <p className="text-zinc-400 mb-4">Pastikan Anda membuka aplikasi melalui Telegram Mini App.</p>
-      <div className="text-[10px] text-zinc-600 font-mono break-all max-w-xs">
-        Debug: {(window as any).Telegram?.WebApp?.initData || "No InitData"}
-      </div>
+      <p className="text-zinc-400">Pastikan Anda membuka aplikasi melalui Telegram Mini App.</p>
     </div>
   );
 

@@ -335,37 +335,83 @@ export default function AirdropApp() {
   // Face Verification Functions
   const startVerification = async () => {
     try {
+      // Request camera with specific constraints
       const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user' }, // Front camera
+        video: { 
+          facingMode: 'user',
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        },
         audio: false
       });
       
       setStream(mediaStream);
       setIsVerifying(true);
       
-      if (videoRef.current) {
-        videoRef.current.srcObject = mediaStream;
-      }
-    } catch (err) {
+      // Wait for video element to be ready
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = mediaStream;
+          videoRef.current.play().catch(err => {
+            console.error('Video play error:', err);
+            alert('Failed to start camera preview');
+          });
+        }
+      }, 100);
+      
+    } catch (err: any) {
       console.error('Camera access error:', err);
-      alert('Failed to access camera. Please allow camera permissions.');
+      let errorMsg = 'Failed to access camera. ';
+      
+      if (err.name === 'NotAllowedError') {
+        errorMsg += 'Please allow camera permissions in your browser settings.';
+      } else if (err.name === 'NotFoundError') {
+        errorMsg += 'No camera found on your device.';
+      } else {
+        errorMsg += 'Please check your camera permissions.';
+      }
+      
+      alert(errorMsg);
     }
   };
 
   const capturePhoto = () => {
-    if (!videoRef.current || !canvasRef.current) return;
+    if (!videoRef.current || !canvasRef.current) {
+      alert('Camera not ready. Please try again.');
+      return;
+    }
     
     const video = videoRef.current;
     const canvas = canvasRef.current;
+    
+    // Check if video is actually playing
+    if (video.readyState !== video.HAVE_ENOUGH_DATA) {
+      alert('Camera is loading. Please wait a moment and try again.');
+      return;
+    }
+    
     const context = canvas.getContext('2d');
+    if (!context) {
+      alert('Failed to process image. Please try again.');
+      return;
+    }
     
-    if (!context) return;
-    
+    // Set canvas dimensions to match video
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
-    context.drawImage(video, 0, 0);
     
-    const imageData = canvas.toDataURL('image/jpeg');
+    // Draw current video frame to canvas
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    
+    // Get image data
+    const imageData = canvas.toDataURL('image/jpeg', 0.8);
+    
+    // Validate that we actually got image data (not blank)
+    if (!imageData || imageData === 'data:,') {
+      alert('Failed to capture image. Please ensure camera is working.');
+      return;
+    }
+    
     setCapturedImage(imageData);
     stopCamera();
   };
@@ -379,16 +425,33 @@ export default function AirdropApp() {
   };
 
   const submitVerification = async () => {
-    if (!user || !capturedImage) return;
+    if (!user || !capturedImage) {
+      alert('Please capture your photo first.');
+      return;
+    }
+    
+    // Validate that captured image is not blank/empty
+    if (capturedImage === 'data:,' || capturedImage.length < 1000) {
+      alert('Invalid photo. Please retake your photo.');
+      setCapturedImage(null);
+      return;
+    }
     
     try {
-      // Here you would typically send the image to a face verification API
-      // For now, we'll just mark as verified
+      setLoading(true);
+      
+      // TODO: Add actual face detection API here
+      // For now, we'll do basic validation
+      
+      // Simulate processing delay
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
       const { error } = await supabase
         .from('users')
         .update({ 
           is_verified: true,
-          points: user.points + 50 // Bonus for verification
+          points: user.points + 50,
+          verification_image: capturedImage // Store for admin review
         })
         .eq('telegram_id', user.telegramId);
 
@@ -396,6 +459,7 @@ export default function AirdropApp() {
 
       setUser({ ...user, isVerified: true, points: user.points + 50 });
       setCapturedImage(null);
+      setLoading(false);
       
       const WebApp = (window as any).Telegram?.WebApp;
       if (WebApp?.showAlert) {
@@ -405,7 +469,8 @@ export default function AirdropApp() {
       }
     } catch (err) {
       console.error('Verification error:', err);
-      alert('Failed to submit verification');
+      setLoading(false);
+      alert('Failed to submit verification. Please try again.');
     }
   };
 
@@ -620,15 +685,21 @@ export default function AirdropApp() {
 
                       {isVerifying && (
                         <div className="space-y-4">
-                          <div className="relative bg-black rounded-xl overflow-hidden">
+                          <div className="relative bg-black rounded-xl overflow-hidden aspect-[3/4]">
                             <video 
                               ref={videoRef}
                               autoPlay 
                               playsInline
-                              className="w-full rounded-xl"
+                              muted
+                              className="w-full h-full object-cover rounded-xl"
                             />
-                            <div className="absolute inset-0 border-4 border-[#0088CC]/50 rounded-xl pointer-events-none">
-                              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-64 border-2 border-green-500 rounded-full"></div>
+                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                              <div className="w-48 h-64 border-4 border-green-500/60 rounded-full"></div>
+                            </div>
+                            <div className="absolute bottom-4 left-0 right-0 text-center">
+                              <p className="text-white text-xs bg-black/60 px-3 py-1 rounded-full inline-block">
+                                Position your face in the circle
+                              </p>
                             </div>
                           </div>
                           <canvas ref={canvasRef} className="hidden" />

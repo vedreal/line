@@ -38,14 +38,18 @@ export default function Home() {
       const checkTelegram = async () => {
         const webApp = (window as any).Telegram?.WebApp;
         
-        // Use ID from UI if available as fallback for debugging
-        const userId = webApp?.initDataUnsafe?.user?.id;
+        // Let's use whatever user ID we can find, even if initData is not fully synced
+        // Sometimes only initDataUnsafe is available first
+        const tgUser = webApp?.initDataUnsafe?.user;
+        const tgId = tgUser?.id;
         
-        if (webApp && userId) {
-          const tgUser = webApp.initDataUnsafe.user;
-          const tgId = tgUser.id;
+        console.log("WebApp Object:", !!webApp, "User Object:", !!tgUser, "ID:", tgId);
 
+        if (tgId) {
           try {
+            // First, make sure we stop the retry loop
+            if (intervalId) clearInterval(intervalId);
+
             let { data, error } = await supabase
               .from('users')
               .select('*')
@@ -70,7 +74,9 @@ export default function Home() {
                 .select()
                 .single();
 
-              if (!createError) setUser(createdUser);
+              if (!createError) {
+                setUser(createdUser);
+              }
             } else if (data) {
               setUser(data);
             }
@@ -84,24 +90,31 @@ export default function Home() {
         return false;
       };
 
-      // Try immediately
-      if (await checkTelegram()) return;
-
-      // Retry loop
-      let retries = 0;
-      const interval = setInterval(async () => {
-        retries++;
-        if (await checkTelegram() || retries > 10) {
-          clearInterval(interval);
-          setLoading(false);
-        }
-      }, 500);
-
       const webApp = (window as any).Telegram?.WebApp;
       if (webApp) {
         webApp.ready();
         webApp.expand();
       }
+
+      let intervalId: any = null;
+
+      // Try immediately
+      if (await checkTelegram()) return;
+
+      // Retry more aggressively
+      intervalId = setInterval(async () => {
+        if (await checkTelegram()) {
+          clearInterval(intervalId);
+        }
+      }, 500);
+
+      // Final fallback after 10 seconds
+      setTimeout(() => {
+        if (intervalId) {
+          clearInterval(intervalId);
+          setLoading(false);
+        }
+      }, 10000);
     };
     init();
 

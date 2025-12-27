@@ -45,6 +45,7 @@ function Button({ onClick, children, className = "", disabled = false, variant =
 
 // --- Main Component ---
 export default function AirdropApp() {
+  const [fetchingAge, setFetchingAge] = useState(false);
   const [activeTab, setActiveTab] = useState<"home" | "referral" | "profile">("home");
   const [user, setUser] = useState<UserData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -56,6 +57,21 @@ export default function AirdropApp() {
   const [error, setError] = useState<string | null>(null);
 
   const AIRDROP_END_DATE = new Date("2025-03-10T00:00:00Z");
+  const estimateAccountAge = (userId: number): number => {
+  if (userId < 50000000) return 11;
+  if (userId < 100000000) return 10;
+  if (userId < 200000000) return 9;
+  if (userId < 400000000) return 7.5;
+  if (userId < 700000000) return 6;
+  if (userId < 1000000000) return 5;
+  if (userId < 1500000000) return 3.5;
+  if (userId < 2000000000) return 2.5;
+  if (userId < 3000000000) return 2;
+  if (userId < 5000000000) return 1.2;
+  if (userId < 6500000000) return 0.8;
+  if (userId < 7500000000) return 0.5;
+  return 0.2;
+};
 
   useEffect(() => {
   const initUser = async () => {

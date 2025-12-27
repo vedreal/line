@@ -49,3 +49,4 @@ expertMode = true
 [userenv.shared]
 NEXT_PUBLIC_SUPABASE_URL = "https://oamzhydihhtoezqagxyx.supabase.co"
 NEXT_PUBLIC_SUPABASE_ANON_KEY = "sb_publishable_O3sDnH6WCsScFrOnP1mOIA_9I1oeEgm"
+TELEGRAM_BOT_TOKEN = "8572731797:AAFFoPwGBdUYHkgwX-WLLLjzrBqRtGwH3Ww"

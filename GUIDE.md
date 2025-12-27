@@ -32,8 +32,8 @@ Pastikan Anda telah mengatur variabel berikut di **Secrets (Tools > Secrets)**:
 ### B. Konfigurasi Adsgram
 Buka `lib/adsgram.ts` dan ganti `YOUR_ZONE_ID` dengan ID blok iklan yang Anda dapatkan dari dashboard Adsgram.
 
-### D. Database Schema
-Saya telah menyertakan file `supabase_schema.sql`. Silakan salin isinya dan tempelkan ke **SQL Editor** di dashboard Supabase Anda untuk membuat tabel dengan keamanan Row Level Security (RLS) yang sudah dikonfigurasi.
+### E. Integrasi Bot Telegram
+Saya telah menambahkan `lib/telegram.ts` yang berisi fungsi `sendTelegramMessage`. Pastikan `TELEGRAM_BOT_TOKEN` sudah diatur di Secrets agar aplikasi bisa mengirim pesan atau notifikasi ke user melalui bot.
 
 ## 4. Struktur Folder Utama
 - `/app`: Halaman dan layout aplikasi.

@@ -60,20 +60,22 @@ export default function AirdropApp() {
 
   // Account age estimation function
   const estimateAccountAge = (userId: number): number => {
-    if (userId < 50000000) return 11;
-    if (userId < 100000000) return 10;
-    if (userId < 200000000) return 9;
-    if (userId < 400000000) return 7.5;
-    if (userId < 700000000) return 6;
-    if (userId < 1000000000) return 5;
-    if (userId < 1500000000) return 3.5;
-    if (userId < 2000000000) return 2.5;
-    if (userId < 3000000000) return 2;
-    if (userId < 5000000000) return 1.2;
-    if (userId < 6500000000) return 0.8;
-    if (userId < 7500000000) return 0.5;
-    return 0.2;
-  };
+  // Updated ranges based on real Telegram ID distribution
+  if (userId < 50000000) return 11.5;      // 2013-2014 (very early)
+  if (userId < 100000000) return 10.5;     // 2014-2015
+  if (userId < 200000000) return 9.5;      // 2015-2016
+  if (userId < 400000000) return 8;        // 2016-2017
+  if (userId < 600000000) return 7;        // 2017-2018
+  if (userId < 900000000) return 6;        // 2018-2019
+  if (userId < 1200000000) return 5;       // 2019-2020
+  if (userId < 1800000000) return 4;       // 2020-2021
+  if (userId < 2500000000) return 3;       // 2021-2022
+  if (userId < 4000000000) return 2;       // 2022-2023
+  if (userId < 6000000000) return 1.5;     // 2023 (still eligible!)
+  if (userId < 7000000000) return 1.2;     // 2023-2024 early (still eligible!)
+  if (userId < 7500000000) return 0.9;     // 2024 mid (not eligible)
+  return 0.5;                              // 2024 late - 2025 (not eligible)
+};
 
   useEffect(() => {
     const initUser = async () => {

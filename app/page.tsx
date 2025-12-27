@@ -35,19 +35,6 @@ export default function Home() {
     const init = async () => {
       if (typeof window === 'undefined') return;
 
-      const parseUserData = (rawInitData: string) => {
-        try {
-          const params = new URLSearchParams(rawInitData);
-          const userJson = params.get('user');
-          if (userJson) {
-            return JSON.parse(decodeURIComponent(userJson));
-          }
-        } catch (e) {
-          console.error("Failed to parse initData:", e);
-        }
-        return null;
-      };
-
       const loadUserFromDB = async (tgUser: any) => {
         if (!tgUser?.id) return false;
         const tgId = tgUser.id;
@@ -98,29 +85,25 @@ export default function Home() {
           webApp.ready();
           webApp.expand();
           
-          // Try multiple sources of user data including parsing initData string
-          let user = webApp.initDataUnsafe?.user;
-          if (!user && webApp.initData) {
-            user = parseUserData(webApp.initData);
-          }
-          
-          if (user) {
-            return await loadUserFromDB(user);
+          // Use whatever is available, initDataUnsafe is the most reliable for ID
+          const tgUser = webApp.initDataUnsafe?.user;
+          if (tgUser) {
+            return await loadUserFromDB(tgUser);
           }
         }
         return false;
       };
 
-      // Poll aggressively
+      // Poll for 10 seconds
       let attempts = 0;
       const interval = setInterval(async () => {
         attempts++;
         const success = await checkWebApp();
-        if (success || attempts > 30) {
+        if (success || attempts > 40) {
           clearInterval(interval);
           setLoading(false);
         }
-      }, 300);
+      }, 250);
     };
     
     init();
@@ -191,13 +174,19 @@ export default function Home() {
     </div>
   );
 
-  if (!user) return (
-    <div className="flex flex-col items-center justify-center min-h-screen p-6 text-center">
-      <XCircle size={64} className="text-red-500 mb-4" />
-      <h1 className="text-xl font-bold mb-2">Akses Ditolak</h1>
-      <p className="text-zinc-400">Pastikan Anda membuka aplikasi melalui Telegram Mini App.</p>
-    </div>
-  );
+  // If we have an ID but loading is false and user is still null, it's a Supabase/Data issue
+  if (!user) {
+    const tgId = (window as any).Telegram?.WebApp?.initDataUnsafe?.user?.id;
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen p-6 text-center">
+        <XCircle size={64} className="text-red-500 mb-4" />
+        <h1 className="text-xl font-bold mb-2">Akses Ditolak / Data Error</h1>
+        <p className="text-zinc-400 mb-4">Pastikan Anda membuka aplikasi melalui Telegram Mini App.</p>
+        <div className="text-[10px] text-zinc-600 font-mono">ID: {tgId || "Not Detected"}</div>
+        {!tgId && <p className="text-xs mt-2 text-red-400">Telegram SDK tidak mendeteksi ID Anda.</p>}
+      </div>
+    );
+  }
 
   return (
     <div className="pb-20">

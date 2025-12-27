@@ -93,27 +93,8 @@ export default function AirdropApp() {
         }
 
         if (existingUser) {
-          // Fetch real account age for existing users
-          let accountAge = 0;
-          
-          try {
-            const ageResponse = await fetch('/api/telegram-age', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ telegramId })
-            });
-            
-            if (ageResponse.ok) {
-              const ageData = await ageResponse.json();
-              accountAge = ageData.accountAgeYears || 0;
-            } else {
-              // Fallback to database created_at
-              accountAge = calculateAccountAge(new Date(existingUser.created_at));
-            }
-          } catch (err) {
-            console.error('Failed to get account age:', err);
-            accountAge = calculateAccountAge(new Date(existingUser.created_at));
-          }
+          // Use saved account age from database (calculated once at registration)
+          const accountAge = existingUser.account_age_years || 0;
           
           setUser({
             telegramId: existingUser.telegram_id,
@@ -533,4 +514,4 @@ function NavButton({ active, onClick, icon, label }: any) {
       <span className="text-[10px] font-bold uppercase tracking-wider">{label}</span>
     </button>
   );
-        }
+}

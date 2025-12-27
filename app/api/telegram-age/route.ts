@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
     if (!TELEGRAM_BOT_TOKEN) {
       console.error('TELEGRAM_BOT_TOKEN not configured');
       return NextResponse.json(
-        { accountAgeYears: 0, error: 'Bot token not configured' },
+        { accountAgeYears: estimateAccountAge(parseInt(telegramId)), error: 'Bot token not configured' },
         { status: 500 }
       );
     }
@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
       const errorData = await response.json();
       console.error('Telegram API error:', errorData);
       return NextResponse.json(
-        { accountAgeYears: 0, error: 'Failed to fetch user data' },
+        { accountAgeYears: estimateAccountAge(parseInt(telegramId)), error: 'Failed to fetch user data' },
         { status: 500 }
       );
     }
@@ -43,39 +43,14 @@ export async function POST(request: NextRequest) {
     
     if (!data.ok || !data.result) {
       return NextResponse.json(
-        { accountAgeYears: 0, error: 'Invalid response from Telegram' },
+        { accountAgeYears: estimateAccountAge(parseInt(telegramId)), error: 'Invalid response from Telegram' },
         { status: 500 }
       );
     }
 
-    // Telegram user ID is assigned sequentially
-    // Lower IDs = older accounts
-    // Rough estimation based on ID ranges:
+    // Estimate based on User ID
     const userId = parseInt(telegramId);
-    let accountAgeYears = 0;
-
-    if (userId < 100000000) {
-      // Very old accounts (2013-2015) - ID < 100M
-      accountAgeYears = 9 + Math.random() * 3; // 9-12 years
-    } else if (userId < 500000000) {
-      // Old accounts (2015-2018) - ID 100M-500M
-      accountAgeYears = 6 + Math.random() * 3; // 6-9 years
-    } else if (userId < 1000000000) {
-      // Medium accounts (2018-2020) - ID 500M-1B
-      accountAgeYears = 4 + Math.random() * 2; // 4-6 years
-    } else if (userId < 2000000000) {
-      // Recent accounts (2020-2022) - ID 1B-2B
-      accountAgeYears = 2 + Math.random() * 2; // 2-4 years
-    } else if (userId < 5000000000) {
-      // New accounts (2022-2023) - ID 2B-5B
-      accountAgeYears = 1 + Math.random(); // 1-2 years
-    } else if (userId < 7000000000) {
-      // Very new accounts (2023-2024) - ID 5B-7B
-      accountAgeYears = 0.5 + Math.random() * 0.5; // 0.5-1 years
-    } else {
-      // Brand new accounts (2024+) - ID > 7B
-      accountAgeYears = Math.random() * 0.5; // 0-0.5 years
-    }
+    const accountAgeYears = estimateAccountAge(userId);
 
     return NextResponse.json({
       accountAgeYears: parseFloat(accountAgeYears.toFixed(2)),
@@ -91,4 +66,20 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-  }
+}
+
+function estimateAccountAge(userId: number): number {
+  if (userId < 50000000) return 11;
+  if (userId < 100000000) return 10;
+  if (userId < 200000000) return 9;
+  if (userId < 400000000) return 7.5;
+  if (userId < 700000000) return 6;
+  if (userId < 1000000000) return 5;
+  if (userId < 1500000000) return 3.5;
+  if (userId < 2000000000) return 2.5;
+  if (userId < 3000000000) return 2;
+  if (userId < 5000000000) return 1.2;
+  if (userId < 6500000000) return 0.8;
+  if (userId < 7500000000) return 0.5;
+  return 0.2;
+}

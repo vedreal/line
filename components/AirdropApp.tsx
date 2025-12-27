@@ -17,6 +17,10 @@ interface UserData {
   lastCheckIn: string | null;
   email: string | null;
   referrals: number;
+  checkInCount: number;
+  checkInPoints: number;
+  referralPoints: number;
+  referralTon: number;
 }
 
 // --- Components ---
@@ -60,22 +64,21 @@ export default function AirdropApp() {
 
   // Account age estimation function
   const estimateAccountAge = (userId: number): number => {
-  // Same logic as backend for consistency
-  if (userId < 100000000) return 11;
-  if (userId < 300000000) return 9;
-  if (userId < 500000000) return 7.5;
-  if (userId < 800000000) return 6.5;
-  if (userId < 1200000000) return 5.5;
-  if (userId < 1800000000) return 4.5;
-  if (userId < 2500000000) return 3.5;
-  if (userId < 3500000000) return 2.8;
-  if (userId < 5000000000) return 2.2;
-  if (userId < 6000000000) return 1.7;
-  if (userId < 7000000000) return 1.3;
-  if (userId < 7500000000) return 1.0;
-  if (userId < 8000000000) return 0.8;
-  return 0.5;
-};
+    if (userId < 100000000) return 11;
+    if (userId < 300000000) return 9;
+    if (userId < 500000000) return 7.5;
+    if (userId < 800000000) return 6.5;
+    if (userId < 1200000000) return 5.5;
+    if (userId < 1800000000) return 4.5;
+    if (userId < 2500000000) return 3.5;
+    if (userId < 3500000000) return 2.8;
+    if (userId < 5000000000) return 2.2;
+    if (userId < 6000000000) return 1.7;
+    if (userId < 7000000000) return 1.3;
+    if (userId < 7500000000) return 1.0;
+    if (userId < 8000000000) return 0.8;
+    return 0.5;
+  };
 
   useEffect(() => {
     const initUser = async () => {
@@ -122,7 +125,11 @@ export default function AirdropApp() {
             isEligible: accountAge >= 1,
             lastCheckIn: existingUser.last_check_in,
             email: existingUser.email || null,
-            referrals: 0
+            referrals: 0,
+            checkInCount: existingUser.check_in_count || 0,
+            checkInPoints: (existingUser.check_in_count || 0) * 10,
+            referralPoints: 0,
+            referralTon: 0
           });
         } else {
           // New user - fetch account age from backend API
@@ -177,7 +184,11 @@ export default function AirdropApp() {
             isEligible,
             lastCheckIn: null,
             email: null,
-            referrals: 0
+            referrals: 0,
+            checkInCount: 0,
+            checkInPoints: 0,
+            referralPoints: 0,
+            referralTon: 0
           });
         }
 
@@ -241,11 +252,14 @@ export default function AirdropApp() {
     if (!user) return;
     
     try {
+      const newCheckInCount = (user.checkInCount || 0) + 1;
+      
       const { error } = await supabase
         .from('users')
         .update({
           points: user.points + 10,
-          last_check_in: new Date().toISOString()
+          last_check_in: new Date().toISOString(),
+          check_in_count: newCheckInCount
         })
         .eq('telegram_id', user.telegramId);
 
@@ -254,7 +268,9 @@ export default function AirdropApp() {
       setUser({
         ...user,
         points: user.points + 10,
-        lastCheckIn: new Date().toISOString()
+        lastCheckIn: new Date().toISOString(),
+        checkInCount: newCheckInCount,
+        checkInPoints: newCheckInCount * 10
       });
 
       const WebApp = (window as any).Telegram?.WebApp;
@@ -302,19 +318,21 @@ export default function AirdropApp() {
       alert('Failed to save email');
     }
   };
-  const getAgeTier = (years: number): string => {
-  if (years >= 2) return "LEGEND";
-  if (years >= 1.5) return "OLD";
-  if (years >= 1) return "MATURE";
-  return "YOUNG";
-};
 
-const getAgeTierColor = (years: number): string => {
-  if (years >= 2) return "text-purple-400";
-  if (years >= 1.5) return "text-orange-400";
-  if (years >= 1) return "text-green-400";
-  return "text-blue-400";
-};
+  const getAgeTier = (years: number): string => {
+    if (years >= 2) return "LEGEND";
+    if (years >= 1.5) return "OLD";
+    if (years >= 1) return "MATURE";
+    return "YOUNG";
+  };
+
+  const getAgeTierColor = (years: number): string => {
+    if (years >= 2) return "text-purple-400";
+    if (years >= 1.5) return "text-orange-400";
+    if (years >= 1) return "text-green-400";
+    return "text-blue-400";
+  };
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen gap-4">
@@ -368,8 +386,8 @@ const getAgeTierColor = (years: number): string => {
               <h2 className="text-lg font-bold text-green-500">You are Eligible!</h2>
             </div>
             <p className="text-zinc-400 text-sm mb-1">
-  Account Age: <span className={`font-bold ${getAgeTierColor(user.accountAgeYears)}`}>{getAgeTier(user.accountAgeYears)}</span>
-</p>
+              Account Age: <span className={`font-bold ${getAgeTierColor(user.accountAgeYears)}`}>{getAgeTier(user.accountAgeYears)}</span>
+            </p>
             <p className="text-zinc-400 text-sm">
               Age Bonus: <span className="text-yellow font-bold">+{Math.floor(user.accountAgeYears * 1000)} pts</span>
             </p>
@@ -468,10 +486,46 @@ const getAgeTierColor = (years: number): string => {
               className="space-y-6"
             >
               <Card className="bg-gradient-to-br from-[#0088CC]/20 to-black border-[#0088CC]/30">
-                <div className="text-center py-4">
+                <div className="text-center py-4 mb-4">
                   <div className="text-zinc-400 text-sm mb-1 uppercase tracking-widest font-bold">Total Points</div>
                   <div className="text-5xl font-black text-white drop-shadow-[0_0_15px_rgba(0,136,204,0.5)]">
                     {user.points.toLocaleString()}
+                  </div>
+                </div>
+                
+                {/* Points Statistics */}
+                <div className="border-t border-white/10 pt-4 space-y-3">
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center gap-2">
+                      <Calendar size={16} className="text-green-400" />
+                      <span className="text-zinc-400 text-sm">Daily Check-in</span>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-white font-bold">{user.checkInPoints} pts</div>
+                      <div className="text-xs text-zinc-500">{user.checkInCount}x check-ins</div>
+                    </div>
+                  </div>
+                  
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center gap-2">
+                      <Users size={16} className="text-purple-400" />
+                      <span className="text-zinc-400 text-sm">Referral Rewards</span>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-white font-bold">{user.referralPoints} pts</div>
+                      <div className="text-xs text-zinc-500">{user.referralTon.toFixed(3)} TON</div>
+                    </div>
+                  </div>
+                  
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center gap-2">
+                      <Trophy size={16} className="text-yellow" />
+                      <span className="text-zinc-400 text-sm">Age Bonus</span>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-white font-bold">{Math.floor(user.accountAgeYears * 1000)} pts</div>
+                      <div className="text-xs text-zinc-500">{user.accountAgeYears.toFixed(1)} years</div>
+                    </div>
                   </div>
                 </div>
               </Card>
@@ -499,6 +553,40 @@ const getAgeTierColor = (years: number): string => {
                     </p>
                   </div>
                 )}
+              </Card>
+
+              {/* Wallet Address - Coming Soon */}
+              <Card className="relative overflow-hidden">
+                <div className="absolute top-2 right-2 bg-yellow/20 text-yellow text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider">
+                  Coming Soon
+                </div>
+                <h3 className="font-bold mb-4">TON Wallet Address</h3>
+                <div className="space-y-3 opacity-60 pointer-events-none">
+                  <div>
+                    <label className="text-xs text-zinc-400 mb-1 block">Wallet Address</label>
+                    <input 
+                      type="text" 
+                      placeholder="UQA..." 
+                      disabled
+                      className="w-full bg-black border border-zinc-700 rounded-lg p-3 text-zinc-500 cursor-not-allowed"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-zinc-400 mb-1 block">Memo (Optional)</label>
+                    <input 
+                      type="text" 
+                      placeholder="Your memo" 
+                      disabled
+                      className="w-full bg-black border border-zinc-700 rounded-lg p-3 text-zinc-500 cursor-not-allowed"
+                    />
+                  </div>
+                  <Button disabled variant="disabled">
+                    Save Wallet
+                  </Button>
+                </div>
+                <p className="text-xs text-zinc-500 text-center mt-3">
+                  Wallet submission will be available soon for airdrop distribution.
+                </p>
               </Card>
             </motion.div>
           )}

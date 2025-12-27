@@ -79,27 +79,42 @@ export default function Home() {
 
           if (!data) {
             log("User missing. Registering...");
+            
+            // Simplified registration without email field to ensure basic access works
+            const newUser: any = {
+              telegram_id: tgId,
+              username: tgUser.username || '',
+              first_name: tgUser.first_name || '',
+              points: 100,
+              ton_balance: 0,
+              is_eligible: true,
+              last_check_in: null
+            };
+
             const { data: created, error: createError } = await supabase
               .from('users')
-              .insert([{
-                telegram_id: tgId,
-                username: tgUser.username || '',
-                first_name: tgUser.first_name || '',
-                points: 100,
-                ton_balance: 0,
-                is_eligible: true,
-                last_check_in: null,
-                email: null
-              }])
+              .insert([newUser])
               .select()
               .maybeSingle();
 
             if (createError) {
               log(`Reg Error: ${createError.message}`);
-              return false;
+              // Last ditch effort: try without any optional fields
+              const { data: retry, error: retryError } = await supabase
+                .from('users')
+                .insert([{ telegram_id: tgId }])
+                .select()
+                .maybeSingle();
+                
+              if (retryError) {
+                log(`Critical: ${retryError.message}`);
+                return false;
+              }
+              setUser(retry);
+            } else {
+              setUser(created);
             }
             log("Registered!");
-            setUser(created);
           } else {
             log("User loaded!");
             setUser(data);

@@ -1,28 +1,63 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from '@supabase/supabase-js';
-import { showAd } from "@/lib/adsgram";
-import { CheckCircle2, XCircle, Clock, Calendar, Users, Wallet, Trophy, User as UserIcon, AlertCircle, ArrowRight, Gift, LayoutDashboard, History } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { createClient } from "@supabase/supabase-js";
+import { CheckCircle2, XCircle, Clock, Calendar, Users, Wallet, Trophy, User as UserIcon, LogOut } from "lucide-react";
+import { formatDistanceToNow, addDays, isAfter } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
 
-// Direct initialization
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
-);
-
+// --- Types ---
 interface UserData {
-  telegram_id: number;
+  telegramId: string;
   username: string;
-  first_name: string;
   points: number;
-  ton_balance: number;
-  is_eligible: boolean;
-  last_check_in: string | null;
+  tonBalance: number;
+  accountAgeYears: number;
+  isEligible: boolean;
+  lastCheckIn: string | null;
   email: string | null;
+  referrals: number;
 }
+
+// --- Mock Data / Helpers ---
+const MOCK_USER: UserData = {
+  telegramId: "123456789",
+  username: "CryptoUser",
+  points: 0,
+  tonBalance: 0,
+  accountAgeYears: 0,
+  isEligible: false,
+  lastCheckIn: null,
+  email: null,
+  referrals: 0,
+};
+
+// --- Components ---
+
+function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return <div className={`card-3d p-4 ${className}`}>{children}</div>;
+}
+
+function Button({ onClick, children, className = "", disabled = false, variant = "primary" }: any) {
+  const base = "w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 btn-3d select-none";
+  const styles = {
+    primary: "bg-[#0088CC] text-white",
+    secondary: "bg-zinc-800 text-white border border-zinc-700",
+    disabled: "bg-zinc-700 text-zinc-400 cursor-not-allowed opacity-50 shadow-none transform-none",
+  };
+  
+  return (
+    <button 
+      onClick={onClick} 
+      disabled={disabled}
+      className={`${base} ${disabled ? styles.disabled : (variant === "primary" ? styles.primary : styles.secondary)} ${className}`}
+    >
+      {children}
+    </button>
+  );
+}
+
+// --- Main Page ---
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<"home" | "referral" | "profile">("home");
@@ -33,398 +68,381 @@ export default function Home() {
   const [nextCheckIn, setNextCheckIn] = useState<Date | null>(null);
   const [timeLeft, setTimeLeft] = useState("");
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [debugLog, setDebugLog] = useState<string[]>([]);
 
+  // Airdrop Countdown
   const AIRDROP_END_DATE = new Date("2025-03-10T00:00:00Z");
 
-  const log = (msg: string) => {
-    console.log(`[App] ${msg}`);
-    setDebugLog(prev => [...prev.slice(-4), msg]);
-  };
-
   useEffect(() => {
+    // Simulate Login / Fetch Data
     const init = async () => {
-      if (typeof window === 'undefined') return;
-
-      const webApp = (window as any).Telegram?.WebApp;
-      if (webApp) {
-        webApp.ready();
-        webApp.expand();
-        webApp.headerColor = '#000000';
-        webApp.backgroundColor = '#000000';
-      }
-
-      const attemptFetch = async () => {
-        const currentWebApp = (window as any).Telegram?.WebApp;
-        const tgUser = currentWebApp?.initDataUnsafe?.user;
-        const tgId = tgUser?.id;
+      // In a real app, we'd fetch from Supabase here using window.Telegram.WebApp.initData
+      // For now, we simulate a delay and mock data or load from localStorage
+      await new Promise(r => setTimeout(r, 1000));
+      
+      const stored = localStorage.getItem("tonline_user");
+      if (stored) {
+        setUser(JSON.parse(stored));
+      } else {
+        // First time mock login
+        const mockAge = Math.random() * 2 + 0.5; // Random age between 0.5 and 2.5 years
+        const eligible = mockAge >= 1;
+        const initialPoints = eligible ? Math.floor(mockAge * 1000) : 0;
         
-        if (!tgId) return false;
-
-        try {
-          const { data, error } = await supabase
-            .from('users')
-            .select('*')
-            .eq('telegram_id', tgId)
-            .maybeSingle();
-
-          if (error) {
-            log(`DB Error: ${error.message}`);
-            return false;
-          }
-
-          if (!data) {
-            log("User missing. Registering...");
-            const newUser: any = {
-              telegram_id: tgId,
-              username: tgUser.username || '',
-              first_name: tgUser.first_name || '',
-              points: 100,
-              ton_balance: 0,
-              is_eligible: true,
-              last_check_in: null
-            };
-
-            const { data: created, error: createError } = await supabase
-              .from('users')
-              .insert([newUser])
-              .select()
-              .maybeSingle();
-
-            if (createError) {
-              const { data: retry } = await supabase
-                .from('users')
-                .insert([{ telegram_id: tgId, first_name: tgUser.first_name || 'User' }])
-                .select()
-                .maybeSingle();
-              setUser(retry);
-            } else {
-              setUser(created);
-            }
-          } else {
-            setUser(data);
-          }
-          return true;
-        } catch (err: any) {
-          return false;
-        }
-      };
-
-      let attempts = 0;
-      const interval = setInterval(async () => {
-        attempts++;
-        const success = await attemptFetch();
-        if (success || attempts >= 40) {
-          clearInterval(interval);
-          setLoading(false);
-        }
-      }, 250);
+        const newUser = {
+          ...MOCK_USER,
+          accountAgeYears: mockAge,
+          isEligible: eligible,
+          points: initialPoints,
+        };
+        setUser(newUser);
+        localStorage.setItem("tonline_user", JSON.stringify(newUser));
+      }
+      setLoading(false);
     };
-    
     init();
-    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+
+    // Timer Interval
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
     return () => clearInterval(timer);
   }, []);
 
+  // Countdown Logic
   useEffect(() => {
+    if (!AIRDROP_END_DATE) return;
     const now = new Date();
     const diff = AIRDROP_END_DATE.getTime() - now.getTime();
-    if (diff <= 0) { setTimeLeft("Selesai"); return; }
+    
+    if (diff <= 0) {
+      setTimeLeft("Airdrop Ended");
+      return;
+    }
+    
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
     const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
     const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
     const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-    setTimeLeft(`${days}h ${hours}j ${minutes}m ${seconds}d`);
+    
+    setTimeLeft(`${days}d ${hours}h ${minutes}m ${seconds}s`);
   }, [currentTime]);
 
+  // Check-in Logic
   useEffect(() => {
-    if (!user?.last_check_in) { setNextCheckIn(null); return; }
-    const lastCheck = new Date(user.last_check_in);
+    if (!user?.lastCheckIn) return;
+    
+    const lastCheck = new Date(user.lastCheckIn);
     const now = new Date();
+    
+    // Check if next UTC day has started
     const lastCheckDay = new Date(lastCheck).setUTCHours(0,0,0,0);
     const currentDay = new Date(now).setUTCHours(0,0,0,0);
-    if (currentDay > lastCheckDay) setNextCheckIn(null);
-    else {
+    
+    if (currentDay > lastCheckDay) {
+      setNextCheckIn(null); // Can check in
+    } else {
+      // Next check in is tomorrow 00:00 UTC
       const tomorrow = new Date(now);
       tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
       tomorrow.setUTCHours(0, 0, 0, 0);
       setNextCheckIn(tomorrow);
     }
-  }, [user?.last_check_in, currentTime]);
+  }, [user?.lastCheckIn, currentTime]);
 
   const handleCheckIn = async () => {
     if (!user) return;
-    showAd(async () => {
-      const { data, error } = await supabase
-        .from('users')
-        .update({ points: user.points + 10, last_check_in: new Date().toISOString() })
-        .eq('telegram_id', user.telegram_id)
-        .select().single();
-      if (!error && data) {
-        setUser(data);
-        const webApp = (window as any).Telegram?.WebApp;
-        if (webApp) webApp.HapticFeedback.notificationOccurred('success');
-      }
-    }, (err) => alert("Iklan gagal dimuat."));
+    
+    // Simulate Adsgram
+    const confirmed = confirm("Watch ad to claim 10 points?");
+    if (!confirmed) return;
+
+    const updatedUser = {
+      ...user,
+      points: user.points + 10,
+      lastCheckIn: new Date().toISOString()
+    };
+    
+    setUser(updatedUser);
+    localStorage.setItem("tonline_user", JSON.stringify(updatedUser));
   };
 
-  const handleEmailSubmit = async () => {
-    if (!user || !emailInput) return;
-    const allowed = ['gmail.com', 'hotmail.com', 'outlook.com', 'yahoo.com', 'yandex.com'];
+  const handleEmailSubmit = () => {
+    if (!user) return;
+    
+    const allowedDomains = ['gmail.com', 'hotmail.com', 'outlook.com', 'yahoo.com', 'yandex.com'];
     const domain = emailInput.split('@')[1];
-    if (!emailInput.includes('@') || !allowed.includes(domain)) {
-      setEmailError("Hanya Gmail, Hotmail, Outlook, Yahoo, Yandex."); return;
+    
+    if (!emailInput.includes('@') || !allowedDomains.includes(domain)) {
+      setEmailError("Invalid email! Only Gmail, Hotmail, Outlook, Yahoo, Yandex allowed.");
+      return;
     }
-    const { data, error } = await supabase
-      .from('users')
-      .update({ email: emailInput })
-      .eq('telegram_id', user.telegram_id)
-      .select().single();
-    if (!error && data) { setUser(data); setEmailError(""); }
-    else setEmailError("Gagal menyimpan email.");
+
+    const updatedUser = {
+      ...user,
+      email: emailInput
+    };
+    setUser(updatedUser);
+    localStorage.setItem("tonline_user", JSON.stringify(updatedUser));
+    setEmailError("");
   };
 
-  if (loading) return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-black">
-      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#0088CC] mb-4"></div>
-      <p className="text-zinc-500 font-medium animate-pulse">Memuat Tonline...</p>
-    </div>
-  );
+  const resetAccount = () => {
+    localStorage.removeItem("tonline_user");
+    window.location.reload();
+  };
 
-  if (!user) {
-    const tgId = (window as any).Telegram?.WebApp?.initDataUnsafe?.user?.id;
+  if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen p-6 text-center bg-black">
-        <XCircle size={64} className="text-red-500 mb-4" />
-        <h1 className="text-xl font-bold mb-2">Akses Ditolak</h1>
-        <p className="text-zinc-400 mb-6">Buka aplikasi ini melalui Telegram Mini App.</p>
-        <div className="text-[10px] text-zinc-600 font-mono">ID: {tgId || "Tidak Terdeteksi"}</div>
-        <Button className="mt-8" onClick={() => window.location.reload()}>Coba Lagi</Button>
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#0088CC]"></div>
       </div>
     );
   }
 
+  if (!user) return null;
+
   return (
-    <div className="pb-24 pt-6 px-4 bg-black min-h-screen">
-      <header className="flex justify-between items-center mb-8">
-        <div className="flex flex-col">
-          <h1 className="text-3xl font-black tracking-tighter text-[#0088CC] leading-none">TONLINE</h1>
-          <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-[0.2em] mt-1">Airdrop Campaign</span>
-        </div>
-        <div className="flex items-center gap-2 bg-zinc-900/80 backdrop-blur-sm rounded-2xl px-4 py-2 border border-zinc-800 shadow-xl">
-          <Wallet size={18} className="text-[#0088CC]" />
-          <span className="text-lg font-black tracking-tight">{(user.ton_balance || 0).toFixed(3)}<span className="text-[10px] text-zinc-500 ml-1">TON</span></span>
+    <div className="pb-20">
+      {/* Header */}
+      <header className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-black tracking-tighter text-[#0088CC]">TONLINE</h1>
+        <div className="flex items-center gap-2 bg-zinc-900 rounded-full px-3 py-1 border border-zinc-800">
+          <Wallet size={16} className="text-[#0088CC]" />
+          <span className="text-sm font-medium">{user.tonBalance.toFixed(3)} TON</span>
         </div>
       </header>
 
+      {/* Main Content */}
       <main className="space-y-6">
-        <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}>
-          <Card className="border-[#0088CC]/30 bg-[#0088CC]/5 backdrop-blur-sm py-6">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-2xl bg-green-500/20 flex items-center justify-center border border-green-500/30">
-                  <CheckCircle2 size={24} className="text-green-500" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-black text-green-500 leading-tight">Terverifikasi</h2>
-                  <p className="text-zinc-400 text-sm">Halo, <span className="text-white font-bold">{user.first_name || user.username || 'User'}</span></p>
-                </div>
-              </div>
-              <div className="bg-black/40 rounded-xl px-3 py-1 border border-white/5">
-                <span className="text-[10px] text-zinc-500 font-bold uppercase">Status</span>
-              </div>
+        {/* ELIGIBILITY CHECK */}
+        {!user.isEligible ? (
+          <Card className="border-red-500/50 bg-red-950/10">
+            <div className="flex flex-col items-center text-center gap-3">
+              <XCircle size={48} className="text-red-500" />
+              <h2 className="text-xl font-bold text-red-500">Not Eligible</h2>
+              <p className="text-zinc-400 text-sm">
+                Your Telegram account is {user.accountAgeYears.toFixed(1)} years old. 
+                Minimum requirement is 1 year.
+              </p>
+              <Button onClick={resetAccount} variant="secondary" className="mt-2 text-xs py-2">Reset (Demo Only)</Button>
             </div>
           </Card>
-        </motion.div>
+        ) : (
+          <Card className="border-[#0088CC]/30 bg-[#0088CC]/5">
+            <div className="flex items-center gap-3 mb-2">
+              <CheckCircle2 size={24} className="text-green-500" />
+              <h2 className="text-lg font-bold text-green-500">You are Eligible!</h2>
+            </div>
+            <p className="text-zinc-400 text-sm mb-1">
+              Account Age: <span className="text-white font-mono">{Math.floor(user.accountAgeYears)}y {Math.floor((user.accountAgeYears % 1) * 12)}m</span>
+            </p>
+            <p className="text-zinc-400 text-sm">
+              Age Bonus: <span className="text-yellow font-bold">+{Math.floor(user.accountAgeYears * 1000)} pts</span>
+            </p>
+          </Card>
+        )}
 
+        {/* TABS CONTENT */}
         <AnimatePresence mode="wait">
-          {activeTab === "home" && (
-            <motion.div key="home" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="space-y-6">
-              <div className="grid grid-cols-2 gap-4">
-                <Card className="bg-gradient-to-br from-zinc-900 to-zinc-950 p-5">
-                  <div className="text-zinc-500 text-[10px] font-black uppercase mb-1 tracking-widest">Poin Saya</div>
-                  <div className="text-3xl font-black text-white">{user.points.toLocaleString()}</div>
-                  <div className="mt-4 flex items-center text-[#0088CC] gap-1 text-[10px] font-bold">
-                    <History size={12} />
-                    LIHAT RIWAYAT
-                  </div>
-                </Card>
-                <Card className="bg-gradient-to-br from-zinc-900 to-zinc-950 p-5 border-yellow-500/20">
-                  <div className="text-zinc-500 text-[10px] font-black uppercase mb-1 tracking-widest">Waktu Tersisa</div>
-                  <div className="text-xl font-black text-yellow-500 font-mono mt-1">{timeLeft}</div>
-                  <div className="mt-4 flex items-center text-yellow-500 gap-1 text-[10px] font-bold">
-                    <Clock size={12} />
-                    AIRDROP LIVE
-                  </div>
-                </Card>
-              </div>
-
-              <Card className="relative overflow-hidden group">
-                <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                  <Calendar size={80} className="text-[#0088CC]" />
+          {activeTab === "home" && user.isEligible && (
+            <motion.div 
+              key="home"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="space-y-6"
+            >
+              {/* Daily Check-in */}
+              <Card>
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="font-bold text-lg flex items-center gap-2">
+                    <Calendar size={20} className="text-[#0088CC]" />
+                    Daily Check-in
+                  </h3>
+                  <span className="text-xs bg-[#0088CC]/20 text-[#0088CC] px-2 py-1 rounded">UTC 00:00</span>
                 </div>
-                <div className="relative z-10">
-                  <div className="flex justify-between items-center mb-6">
-                    <div>
-                      <h3 className="font-black text-xl flex items-center gap-2">Daily Check-in</h3>
-                      <p className="text-zinc-500 text-sm">Klaim 10 poin setiap 24 jam</p>
-                    </div>
-                    <div className="w-10 h-10 rounded-xl bg-[#0088CC]/10 flex items-center justify-center border border-[#0088CC]/20">
-                      <Gift size={20} className="text-[#0088CC]" />
-                    </div>
+                
+                {nextCheckIn ? (
+                  <div className="text-center py-4 bg-black/20 rounded-lg border border-white/5">
+                    <p className="text-zinc-500 text-sm mb-1">Next check-in in</p>
+                    <p className="text-xl font-mono font-bold">
+                       {formatDistanceToNow(nextCheckIn)}
+                    </p>
                   </div>
-                  
-                  {nextCheckIn ? (
-                    <div className="text-center py-6 bg-black/40 rounded-2xl border border-white/5 shadow-inner">
-                      <p className="text-zinc-500 text-xs font-bold uppercase tracking-widest mb-2">Tersedia Dalam</p>
-                      <p className="text-2xl font-black font-mono tracking-tighter">{formatDistanceToNow(nextCheckIn)}</p>
-                    </div>
-                  ) : (
-                    <Button onClick={handleCheckIn} className="shadow-[0_0_20px_rgba(0,136,204,0.3)]">
-                      Check-in Sekarang (+10 Pts)
-                      <ArrowRight size={18} />
-                    </Button>
-                  )}
-                </div>
+                ) : (
+                  <Button onClick={handleCheckIn}>
+                    Check-in (+10 Pts)
+                  </Button>
+                )}
               </Card>
 
-              <div className="space-y-3">
-                <h4 className="text-xs font-black text-zinc-500 uppercase tracking-[0.2em] px-1">Misi Tambahan</h4>
-                <Card className="flex items-center justify-between py-4 opacity-50">
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center border border-blue-500/20 text-blue-500">
-                      <Users size={18} />
-                    </div>
-                    <div>
-                      <p className="font-bold text-sm">Follow Twitter (Soon)</p>
-                      <p className="text-[10px] text-zinc-500">+50 Poin</p>
-                    </div>
-                  </div>
-                  <div className="bg-zinc-800 text-zinc-500 text-[10px] font-bold px-3 py-1 rounded-lg">LOCK</div>
-                </Card>
-              </div>
+              {/* Airdrop Countdown */}
+              <Card className="relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-[#0088CC]/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
+                <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
+                  <Clock size={20} className="text-yellow" />
+                  Airdrop Ends
+                </h3>
+                <div className="text-3xl font-black text-center py-4 font-mono tracking-wider bg-black/40 rounded-xl border border-white/5">
+                  {timeLeft}
+                </div>
+                <p className="text-center text-xs text-zinc-500 mt-2">March 10, 2025</p>
+              </Card>
             </motion.div>
           )}
 
           {activeTab === "referral" && (
-            <motion.div key="referral" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="space-y-6">
-              <Card className="text-center py-10 bg-gradient-to-b from-zinc-900 to-black">
-                <div className="w-20 h-20 rounded-[2.5rem] bg-[#0088CC]/10 flex items-center justify-center border border-[#0088CC]/20 mx-auto mb-6 shadow-2xl">
-                  <Users size={40} className="text-[#0088CC]" />
-                </div>
-                <h2 className="text-2xl font-black mb-2">Program Referral</h2>
-                <p className="text-zinc-500 text-sm max-w-[200px] mx-auto mb-8">
-                  Dapatkan <span className="text-white font-bold">50 poin</span> untuk setiap teman yang bergabung.
-                </p>
-                
-                <div className="bg-zinc-950/80 p-4 rounded-2xl border border-white/5 mb-6 text-left">
-                  <label className="text-[10px] font-black text-zinc-600 uppercase tracking-widest mb-2 block">Link Undangan Anda</label>
-                  <div className="flex items-center justify-between gap-3">
-                    <code className="text-xs text-zinc-300 truncate font-mono bg-black/50 p-2 rounded-lg border border-white/5 w-full">t.me/tonline_bot?start={user.telegram_id}</code>
-                    <button className="bg-[#0088CC]/10 text-[#0088CC] p-2 rounded-xl border border-[#0088CC]/20 active:scale-95 transition-transform" onClick={() => {
-                      navigator.clipboard.writeText(`https://t.me/tonline_bot?start=${user.telegram_id}`);
-                      alert("Link disalin!");
-                    }}>
-                      <LayoutDashboard size={18} />
-                    </button>
+            <motion.div
+              key="referral"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="space-y-6"
+            >
+              <Card>
+                <div className="text-center space-y-4">
+                  <div className="w-16 h-16 bg-[#0088CC]/20 rounded-full flex items-center justify-center mx-auto">
+                    <Users size={32} className="text-[#0088CC]" />
                   </div>
-                </div>
-
-                <Button onClick={() => {
-                  const url = `https://t.me/share/url?url=https://t.me/tonline_bot?start=${user.telegram_id}&text=Join Tonline Airdrop! Dapatkan 100 poin gratis saat mendaftar.`;
-                  const webApp = (window as any).Telegram?.WebApp;
-                  if (webApp) webApp.openTelegramLink(url);
-                  else window.open(url, '_blank');
-                }}>
-                  Bagikan Sekarang
-                  <ArrowRight size={18} />
-                </Button>
-              </Card>
-
-              <Card className="py-6">
-                <h3 className="font-black mb-4 px-2">Teman Anda (0)</h3>
-                <div className="text-center py-8 border-2 border-dashed border-zinc-800 rounded-2xl">
-                  <p className="text-zinc-600 text-sm font-bold italic">Belum ada teman yang bergabung</p>
+                  <h2 className="text-xl font-bold">Invite Friends</h2>
+                  <p className="text-zinc-400 text-sm">
+                    Get <span className="text-white font-bold">5 pts</span> + <span className="text-white font-bold">0.002 TON</span> for each eligible friend.
+                  </p>
+                  
+                  <div className="bg-black/30 p-3 rounded-lg flex items-center justify-between border border-white/10">
+                    <code className="text-sm text-zinc-300">t.me/tonline_bot?start={user.telegramId}</code>
+                    <button className="text-[#0088CC] text-xs font-bold uppercase" onClick={() => alert("Copied!")}>Copy</button>
+                  </div>
+                  
+                  <Button>Invite Friends</Button>
                 </div>
               </Card>
+
+              <div className="space-y-3">
+                <h3 className="font-bold text-sm text-zinc-500 uppercase tracking-wider">Referral History</h3>
+                {user.referrals === 0 ? (
+                  <div className="text-center py-8 text-zinc-600">No referrals yet</div>
+                ) : (
+                   /* Mock list */
+                   [1, 2].map((i) => (
+                     <div key={i} className="flex items-center justify-between p-3 bg-zinc-900/50 rounded-lg border border-white/5">
+                       <div className="flex items-center gap-3">
+                         <div className="w-8 h-8 bg-zinc-800 rounded-full flex items-center justify-center text-xs font-bold">U{i}</div>
+                         <div>
+                           <div className="text-sm font-bold">User {i}</div>
+                           <div className="text-xs text-yellow">Eligible</div>
+                         </div>
+                       </div>
+                       <div className="text-right">
+                         <div className="text-sm font-bold text-[#0088CC]">+5 Pts</div>
+                         <div className="text-xs text-zinc-500">+0.002 TON</div>
+                       </div>
+                     </div>
+                   ))
+                )}
+              </div>
             </motion.div>
           )}
 
           {activeTab === "profile" && (
-            <motion.div key="profile" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="space-y-6">
-              <Card className="bg-gradient-to-br from-[#0088CC] to-[#006699] p-0 overflow-hidden shadow-2xl">
-                <div className="p-8 text-center bg-black/20 backdrop-blur-sm">
-                  <div className="text-[#0088CC] bg-white w-16 h-16 rounded-[2rem] flex items-center justify-center mx-auto mb-4 shadow-xl">
-                    <Trophy size={32} />
+            <motion.div
+              key="profile"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="space-y-6"
+            >
+              {/* Stats */}
+              <Card className="bg-gradient-to-br from-[#0088CC]/20 to-black border-[#0088CC]/30">
+                <div className="text-center py-4">
+                  <div className="text-zinc-400 text-sm mb-1 uppercase tracking-widest font-bold">Total Points</div>
+                  <div className="text-5xl font-black text-white drop-shadow-[0_0_15px_rgba(0,136,204,0.5)]">
+                    {user.points.toLocaleString()}
                   </div>
-                  <div className="text-white/60 text-[10px] font-black uppercase tracking-[0.3em] mb-1">Total Saldo Poin</div>
-                  <div className="text-6xl font-black text-white tracking-tighter">{user.points.toLocaleString()}</div>
                 </div>
-                <div className="flex border-t border-white/10">
-                  <div className="flex-1 p-4 text-center border-r border-white/10">
-                    <div className="text-white/40 text-[9px] font-black uppercase mb-1">Peringkat</div>
-                    <div className="text-white font-bold">#1,240</div>
-                  </div>
-                  <div className="flex-1 p-4 text-center">
-                    <div className="text-white/40 text-[9px] font-black uppercase mb-1">Edisi</div>
-                    <div className="text-white font-bold">ALPHA</div>
-                  </div>
+                <div className="grid grid-cols-3 gap-2 mt-4 pt-4 border-t border-white/10">
+                   <div className="text-center">
+                     <div className="text-xs text-zinc-500">Check-in</div>
+                     <div className="font-bold text-lg">{(user.points % 1000)}</div>
+                   </div>
+                   <div className="text-center border-l border-white/10">
+                     <div className="text-xs text-zinc-500">Age</div>
+                     <div className="font-bold text-lg">{Math.floor(user.accountAgeYears * 1000)}</div>
+                   </div>
+                   <div className="text-center border-l border-white/10">
+                     <div className="text-xs text-zinc-500">Ref</div>
+                     <div className="font-bold text-lg">0</div>
+                   </div>
                 </div>
               </Card>
 
-              <Card className="py-6">
-                <div className="flex items-center justify-between mb-6 px-2">
-                  <h3 className="font-black text-lg">Pengaturan Email</h3>
-                  <div className="w-8 h-8 rounded-lg bg-zinc-900 flex items-center justify-center">
-                    <UserIcon size={16} className="text-[#0088CC]" />
-                  </div>
-                </div>
-                
+              {/* Email Form */}
+              <Card>
+                <h3 className="font-bold mb-4">Email Address</h3>
                 {user.email ? (
-                  <div className="p-5 bg-green-500/5 border border-green-500/20 rounded-2xl flex items-center justify-between">
-                    <div>
-                      <p className="text-[10px] font-black text-green-500/60 uppercase tracking-widest mb-1">Email Terdaftar</p>
-                      <p className="text-white font-bold font-mono">{user.email}</p>
-                    </div>
-                    <CheckCircle2 size={24} className="text-green-500" />
+                  <div className="p-3 bg-green-900/20 border border-green-500/30 rounded-lg flex items-center gap-3">
+                    <CheckCircle2 size={18} className="text-green-500" />
+                    <span className="text-green-500 font-mono text-sm">{user.email}</span>
                   </div>
                 ) : (
-                  <div className="space-y-4">
-                    <div className="relative">
-                      <input 
-                        type="email" 
-                        placeholder="Masukkan alamat email..." 
-                        value={emailInput} 
-                        onChange={(e) => setEmailInput(e.target.value)} 
-                        className="w-full bg-zinc-950 border-2 border-zinc-900 rounded-2xl p-4 text-white focus:border-[#0088CC] outline-none transition-all placeholder:text-zinc-700 font-medium" 
-                      />
-                    </div>
-                    {emailError && (
-                      <motion.p initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} className="text-red-500 text-xs font-bold flex items-center gap-1 px-1">
-                        <AlertCircle size={12} />
-                        {emailError}
-                      </motion.p>
-                    )}
-                    <Button onClick={handleEmailSubmit} variant="secondary">Simpan Perubahan</Button>
+                  <div className="space-y-3">
+                    <input 
+                      type="email" 
+                      placeholder="Enter your email" 
+                      value={emailInput}
+                      onChange={(e) => setEmailInput(e.target.value)}
+                      className="w-full bg-black border border-zinc-700 rounded-lg p-3 text-white focus:border-[#0088CC] focus:outline-none transition-colors"
+                    />
+                    {emailError && <p className="text-red text-xs">{emailError}</p>}
+                    <Button onClick={handleEmailSubmit}>Save Email</Button>
+                    <p className="text-xs text-zinc-500 text-center">
+                      Accepted: gmail, hotmail, outlook, yahoo, yandex.
+                      <br/>
+                      <span className="text-red">Cannot be changed after saving.</span>
+                    </p>
                   </div>
                 )}
               </Card>
-              
-              <div className="text-center pt-4">
-                <p className="text-[10px] text-zinc-700 font-black uppercase tracking-widest">Tonline Airdrop v1.0.4</p>
+
+              {/* Wallet */}
+              <Card className="opacity-75">
+                <h3 className="font-bold mb-4 text-zinc-400">Wallet Address</h3>
+                <div className="bg-zinc-900/50 p-4 rounded-lg border border-zinc-800 text-center text-zinc-500 italic">
+                  Coming Soon
+                </div>
+              </Card>
+
+              <div className="pt-4">
+                 <Button onClick={resetAccount} variant="secondary" className="text-red-500 border-red-900/30 hover:bg-red-950/20">
+                   <LogOut size={16} /> Reset Account (Demo)
+                 </Button>
               </div>
             </motion.div>
           )}
         </AnimatePresence>
       </main>
 
-      <nav className="fixed bottom-6 left-4 right-4 bg-zinc-900/90 backdrop-blur-xl border border-white/5 rounded-[2rem] px-8 py-4 z-50 shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
-        <div className="flex justify-between items-center max-w-md mx-auto">
-          <NavButton active={activeTab === "home"} onClick={() => setActiveTab("home")} icon={<LayoutDashboard size={26} />} label="Home" />
-          <div className="w-[1px] h-8 bg-white/5" />
-          <NavButton active={activeTab === "referral"} onClick={() => setActiveTab("referral")} icon={<Users size={26} />} label="Ref" />
-          <div className="w-[1px] h-8 bg-white/5" />
-          <NavButton active={activeTab === "profile"} onClick={() => setActiveTab("profile")} icon={<UserIcon size={26} />} label="Me" />
+      {/* Bottom Nav */}
+      <nav className="fixed bottom-0 left-0 right-0 bg-black/90 backdrop-blur-md border-t border-white/10 px-6 py-4 z-50">
+        <div className="flex justify-around max-w-md mx-auto">
+          <NavButton 
+            active={activeTab === "home"} 
+            onClick={() => setActiveTab("home")} 
+            icon={<Trophy size={24} />} 
+            label="Home" 
+          />
+          <NavButton 
+            active={activeTab === "referral"} 
+            onClick={() => setActiveTab("referral")} 
+            icon={<Users size={24} />} 
+            label="Referral" 
+          />
+          <NavButton 
+            active={activeTab === "profile"} 
+            onClick={() => setActiveTab("profile")} 
+            icon={<UserIcon size={24} />} 
+            label="Profile" 
+          />
         </div>
       </nav>
     </div>
@@ -433,30 +451,12 @@ export default function Home() {
 
 function NavButton({ active, onClick, icon, label }: any) {
   return (
-    <button onClick={onClick} className={`flex flex-col items-center gap-1 transition-all duration-300 relative ${active ? "text-[#0088CC] scale-110" : "text-zinc-600 hover:text-zinc-400"}`}>
-      {active && (
-        <motion.div layoutId="nav-glow" className="absolute -inset-4 bg-[#0088CC]/10 blur-xl rounded-full" />
-      )}
+    <button 
+      onClick={onClick}
+      className={`flex flex-col items-center gap-1 transition-colors ${active ? "text-[#0088CC]" : "text-zinc-600 hover:text-zinc-400"}`}
+    >
       {icon}
-      <span className={`text-[9px] font-black uppercase tracking-tighter ${active ? "opacity-100" : "opacity-0"}`}>{label}</span>
-    </button>
-  );
-}
-
-function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return <div className={`card-3d p-5 rounded-[2rem] bg-zinc-950 border border-zinc-900 shadow-2xl ${className}`}>{children}</div>;
-}
-
-function Button({ onClick, children, className = "", disabled = false, variant = "primary" }: any) {
-  const base = "w-full py-4 rounded-2xl font-black flex items-center justify-center gap-3 btn-3d select-none transition-all active:scale-95";
-  const styles = {
-    primary: "bg-[#0088CC] text-white shadow-[0_10px_20px_rgba(0,136,204,0.2)]",
-    secondary: "bg-zinc-800 text-white border border-zinc-700",
-    disabled: "bg-zinc-800/50 text-zinc-600 cursor-not-allowed opacity-50 shadow-none transform-none",
-  };
-  return (
-    <button onClick={onClick} disabled={disabled} className={`${base} ${disabled ? styles.disabled : (variant === "primary" ? styles.primary : styles.secondary)} ${className}`}>
-      {children}
+      <span className="text-[10px] font-bold uppercase tracking-wider">{label}</span>
     </button>
   );
 }

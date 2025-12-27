@@ -24,8 +24,11 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-        <script src="https://telegram.org/js/telegram-web-app.js" strategy="beforeInteractive"></script>
       </head>
+      <Script 
+        src="https://telegram.org/js/telegram-web-app.js" 
+        strategy="beforeInteractive" 
+      />
       <body className={`${inter.variable} ${fredoka.variable} font-sans bg-black text-white min-h-screen flex flex-col`}>
         <main className="flex-grow container mx-auto px-4 py-6 max-w-md relative z-10">
           {children}

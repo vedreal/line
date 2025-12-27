@@ -35,89 +35,78 @@ export default function Home() {
     const init = async () => {
       if (typeof window === 'undefined') return;
 
-      const checkTelegram = async () => {
-        const webApp = (window as any).Telegram?.WebApp;
-        
-        // Let's use whatever user ID we can find, even if initData is not fully synced
-        // Sometimes only initDataUnsafe is available first
-        const tgUser = webApp?.initDataUnsafe?.user;
-        const tgId = tgUser?.id;
-        
-        console.log("WebApp Object:", !!webApp, "User Object:", !!tgUser, "ID:", tgId);
+      const loadUser = async (tgUser: any) => {
+        if (!tgUser?.id) return false;
+        const tgId = tgUser.id;
 
-        if (tgId) {
-          try {
-            // First, make sure we stop the retry loop
-            if (intervalId) clearInterval(intervalId);
+        try {
+          let { data, error } = await supabase
+            .from('users')
+            .select('*')
+            .eq('telegram_id', tgId)
+            .single();
 
-            let { data, error } = await supabase
+          if (error && error.code === 'PGRST116') {
+            const newUser = {
+              telegram_id: tgId,
+              username: tgUser.username || '',
+              first_name: tgUser.first_name || '',
+              points: 100,
+              ton_balance: 0,
+              is_eligible: true,
+              last_check_in: null,
+              email: null
+            };
+
+            const { data: createdUser, error: createError } = await supabase
               .from('users')
-              .select('*')
-              .eq('telegram_id', tgId)
+              .insert([newUser])
+              .select()
               .single();
 
-            if (error && error.code === 'PGRST116') {
-              const newUser = {
-                telegram_id: tgId,
-                username: tgUser.username || '',
-                first_name: tgUser.first_name || '',
-                points: 100,
-                ton_balance: 0,
-                is_eligible: true,
-                last_check_in: null,
-                email: null
-              };
-
-              const { data: createdUser, error: createError } = await supabase
-                .from('users')
-                .insert([newUser])
-                .select()
-                .single();
-
-              if (!createError) {
-                setUser(createdUser);
-              }
-            } else if (data) {
-              setUser(data);
+            if (!createError) {
+              setUser(createdUser);
             }
-          } catch (err) {
-            console.error("Supabase Error:", err);
-          } finally {
-            setLoading(false);
+          } else if (data) {
+            setUser(data);
           }
           return true;
+        } catch (err) {
+          console.error("Supabase Error:", err);
+          return false;
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      const checkWebApp = async () => {
+        const webApp = (window as any).Telegram?.WebApp;
+        if (webApp) {
+          webApp.ready();
+          webApp.expand();
+          
+          // Try multiple sources of user data
+          const user = webApp.initDataUnsafe?.user || webApp.initData?.user;
+          if (user) {
+            return await loadUser(user);
+          }
         }
         return false;
       };
 
-      const webApp = (window as any).Telegram?.WebApp;
-      if (webApp) {
-        webApp.ready();
-        webApp.expand();
-      }
-
-      let intervalId: any = null;
-
-      // Try immediately
-      if (await checkTelegram()) return;
-
-      // Retry more aggressively
-      intervalId = setInterval(async () => {
-        if (await checkTelegram()) {
-          clearInterval(intervalId);
-        }
-      }, 500);
-
-      // Final fallback after 10 seconds
-      setTimeout(() => {
-        if (intervalId) {
-          clearInterval(intervalId);
+      // Poll aggressively for 5 seconds
+      let attempts = 0;
+      const interval = setInterval(async () => {
+        attempts++;
+        const success = await checkWebApp();
+        if (success || attempts > 20) {
+          clearInterval(interval);
           setLoading(false);
         }
-      }, 10000);
+      }, 250);
     };
+    
     init();
-
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
@@ -139,9 +128,8 @@ export default function Home() {
     const now = new Date();
     const lastCheckDay = new Date(lastCheck).setUTCHours(0,0,0,0);
     const currentDay = new Date(now).setUTCHours(0,0,0,0);
-    if (currentDay > lastCheckDay) {
-      setNextCheckIn(null);
-    } else {
+    if (currentDay > lastCheckDay) setNextCheckIn(null);
+    else {
       const tomorrow = new Date(now);
       tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
       tomorrow.setUTCHours(0, 0, 0, 0);
@@ -159,8 +147,7 @@ export default function Home() {
         .select().single();
       if (!error && data) {
         setUser(data);
-        const webApp = (window as any).Telegram?.WebApp;
-        if (webApp) webApp.HapticFeedback.notificationOccurred('success');
+        (window as any).Telegram?.WebApp?.HapticFeedback.notificationOccurred('success');
       }
     }, (err) => alert("Ad failed to load."));
   };
@@ -191,8 +178,10 @@ export default function Home() {
     <div className="flex flex-col items-center justify-center min-h-screen p-6 text-center">
       <XCircle size={64} className="text-red-500 mb-4" />
       <h1 className="text-xl font-bold mb-2">Akses Ditolak</h1>
-      <p className="text-zinc-400 mb-4">Silakan buka aplikasi ini melalui Telegram Mini App.</p>
-      <p className="text-xs text-zinc-600">ID: {(window as any).Telegram?.WebApp?.initDataUnsafe?.user?.id || 'Not Found'}</p>
+      <p className="text-zinc-400 mb-4">Pastikan Anda membuka aplikasi melalui Telegram Mini App.</p>
+      <div className="text-[10px] text-zinc-600 font-mono break-all max-w-xs">
+        Debug: {(window as any).Telegram?.WebApp?.initData || "No InitData"}
+      </div>
     </div>
   );
 
@@ -249,9 +238,7 @@ export default function Home() {
                   </div>
                   <Button onClick={() => {
                     const url = `https://t.me/share/url?url=https://t.me/tonline_bot?start=${user.telegram_id}&text=Join Tonline Airdrop!`;
-                    const webApp = (window as any).Telegram?.WebApp;
-                    if (webApp) webApp.openTelegramLink(url);
-                    else window.open(url, '_blank');
+                    (window as any).Telegram?.WebApp?.openTelegramLink(url);
                   }}>Undang</Button>
                 </div>
               </Card>

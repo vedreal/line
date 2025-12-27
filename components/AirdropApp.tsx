@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { CheckCircle2, XCircle, Clock, Calendar, Users, Wallet, Trophy, User as UserIcon } from "lucide-react";
+import { CheckCircle2, XCircle, Clock, Calendar, Users, Wallet, Trophy, User as UserIcon, Loader2 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -57,162 +57,144 @@ export default function AirdropApp() {
   const [error, setError] = useState<string | null>(null);
 
   const AIRDROP_END_DATE = new Date("2025-03-10T00:00:00Z");
+
+  // Account age estimation function
   const estimateAccountAge = (userId: number): number => {
-  if (userId < 50000000) return 11;
-  if (userId < 100000000) return 10;
-  if (userId < 200000000) return 9;
-  if (userId < 400000000) return 7.5;
-  if (userId < 700000000) return 6;
-  if (userId < 1000000000) return 5;
-  if (userId < 1500000000) return 3.5;
-  if (userId < 2000000000) return 2.5;
-  if (userId < 3000000000) return 2;
-  if (userId < 5000000000) return 1.2;
-  if (userId < 6500000000) return 0.8;
-  if (userId < 7500000000) return 0.5;
-  return 0.2;
-};
+    if (userId < 50000000) return 11;
+    if (userId < 100000000) return 10;
+    if (userId < 200000000) return 9;
+    if (userId < 400000000) return 7.5;
+    if (userId < 700000000) return 6;
+    if (userId < 1000000000) return 5;
+    if (userId < 1500000000) return 3.5;
+    if (userId < 2000000000) return 2.5;
+    if (userId < 3000000000) return 2;
+    if (userId < 5000000000) return 1.2;
+    if (userId < 6500000000) return 0.8;
+    if (userId < 7500000000) return 0.5;
+    return 0.2;
+  };
 
   useEffect(() => {
-  const initUser = async () => {
-    try {
-      if (typeof window === 'undefined') return;
+    const initUser = async () => {
+      try {
+        if (typeof window === 'undefined') return;
 
-      const WebApp = (window as any).Telegram?.WebApp;
-      if (!WebApp) {
-        setError("Please open this app from Telegram");
-        setLoading(false);
-        return;
-      }
-
-      const tgUser = WebApp.initDataUnsafe?.user;
-      if (!tgUser) {
-        setError("Unable to get Telegram user data");
-        setLoading(false);
-        return;
-      }
-
-      const telegramId = tgUser.id.toString();
-
-      // Check if user exists in DB
-      const { data: existingUser, error: fetchError } = await supabase
-        .from('users')
-        .select('*')
-        .eq('telegram_id', telegramId)
-        .single();
-
-      if (fetchError && fetchError.code !== 'PGRST116') {
-        throw fetchError;
-      }
-
-      if (existingUser) {
-        // User exists - use saved account age from database
-        const accountAge = existingUser.account_age_years || 0;
-        
-        setUser({
-          telegramId: existingUser.telegram_id,
-          username: existingUser.username || tgUser.username || 'User',
-          points: existingUser.points || 0,
-          tonBalance: parseFloat(existingUser.ton_balance) || 0,
-          accountAgeYears: accountAge,
-          isEligible: accountAge >= 1,
-          lastCheckIn: existingUser.last_check_in,
-          email: existingUser.email || null,
-          referrals: 0
-        });
-      } else {
-        // New user - fetch account age from backend API
-        setFetchingAge(true);
-        
-        let accountAge = 0;
-        try {
-          const response = await fetch('/api/telegram-age', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ telegramId })
-          });
-          
-          if (response.ok) {
-            const data = await response.json();
-            accountAge = data.accountAgeYears || 0;
-          } else {
-            // Fallback to estimation
-            accountAge = estimateAccountAge(parseInt(telegramId));
-          }
-        } catch (apiError) {
-          console.error('API error, using fallback:', apiError);
-          accountAge = estimateAccountAge(parseInt(telegramId));
-        } finally {
-          setFetchingAge(false);
+        const WebApp = (window as any).Telegram?.WebApp;
+        if (!WebApp) {
+          setError("Please open this app from Telegram");
+          setLoading(false);
+          return;
         }
 
-        const isEligible = accountAge >= 1;
-        const initialPoints = isEligible ? Math.floor(accountAge * 1000) : 0;
+        const tgUser = WebApp.initDataUnsafe?.user;
+        if (!tgUser) {
+          setError("Unable to get Telegram user data");
+          setLoading(false);
+          return;
+        }
 
-        // Save to database with account_age_years
-        const { data: newUser, error: insertError } = await supabase
+        const telegramId = tgUser.id.toString();
+
+        // Check if user exists in DB
+        const { data: existingUser, error: fetchError } = await supabase
           .from('users')
-          .insert({
-            telegram_id: telegramId,
-            username: tgUser.username || null,
-            first_name: tgUser.first_name || null,
-            points: initialPoints,
-            account_age_years: accountAge,
-          })
-          .select()
+          .select('*')
+          .eq('telegram_id', telegramId)
           .single();
 
-        if (insertError) throw insertError;
+        if (fetchError && fetchError.code !== 'PGRST116') {
+          throw fetchError;
+        }
 
-        setUser({
-          telegramId: newUser.telegram_id,
-          username: newUser.username || tgUser.username || 'User',
-          points: newUser.points || 0,
-          tonBalance: 0,
-          accountAgeYears: accountAge,
-          isEligible,
-          lastCheckIn: null,
-          email: null,
-          referrals: 0
-        });
+        if (existingUser) {
+          // User exists - use saved account age from database
+          const accountAge = existingUser.account_age_years || 0;
+          
+          setUser({
+            telegramId: existingUser.telegram_id,
+            username: existingUser.username || tgUser.username || 'User',
+            points: existingUser.points || 0,
+            tonBalance: parseFloat(existingUser.ton_balance) || 0,
+            accountAgeYears: accountAge,
+            isEligible: accountAge >= 1,
+            lastCheckIn: existingUser.last_check_in,
+            email: existingUser.email || null,
+            referrals: 0
+          });
+        } else {
+          // New user - fetch account age from backend API
+          setFetchingAge(true);
+          
+          let accountAge = 0;
+          try {
+            const response = await fetch('/api/telegram-age', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ telegramId })
+            });
+            
+            if (response.ok) {
+              const data = await response.json();
+              accountAge = data.accountAgeYears || 0;
+            } else {
+              // Fallback to estimation
+              accountAge = estimateAccountAge(parseInt(telegramId));
+            }
+          } catch (apiError) {
+            console.error('API error, using fallback:', apiError);
+            accountAge = estimateAccountAge(parseInt(telegramId));
+          } finally {
+            setFetchingAge(false);
+          }
+
+          const isEligible = accountAge >= 1;
+          const initialPoints = isEligible ? Math.floor(accountAge * 1000) : 0;
+
+          // Save to database with account_age_years
+          const { data: newUser, error: insertError } = await supabase
+            .from('users')
+            .insert({
+              telegram_id: telegramId,
+              username: tgUser.username || null,
+              first_name: tgUser.first_name || null,
+              points: initialPoints,
+              account_age_years: accountAge,
+            })
+            .select()
+            .single();
+
+          if (insertError) throw insertError;
+
+          setUser({
+            telegramId: newUser.telegram_id,
+            username: newUser.username || tgUser.username || 'User',
+            points: newUser.points || 0,
+            tonBalance: 0,
+            accountAgeYears: accountAge,
+            isEligible,
+            lastCheckIn: null,
+            email: null,
+            referrals: 0
+          });
+        }
+
+      } catch (err) {
+        console.error('Init error:', err);
+        setError('Failed to load user data');
+      } finally {
+        setLoading(false);
       }
+    };
 
-    } catch (err) {
-      console.error('Init error:', err);
-      setError('Failed to load user data');
-    } finally {
-      setLoading(false);
-    }
-  };
+    initUser();
 
-  initUser();
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
 
-  const timer = setInterval(() => {
-    setCurrentTime(new Date());
-  }, 1000);
-
-  return () => clearInterval(timer);
-}, []);
-
-  const estimateAccountAge = (userId: number): number => {
-    // Telegram user IDs are assigned sequentially
-    // Lower IDs = older accounts
-    if (userId < 100000000) {
-      return 10; // Very old (2013-2015)
-    } else if (userId < 500000000) {
-      return 7; // Old (2015-2018)
-    } else if (userId < 1000000000) {
-      return 5; // Medium (2018-2020)
-    } else if (userId < 2000000000) {
-      return 3; // Recent (2020-2022)
-    } else if (userId < 5000000000) {
-      return 1.5; // New (2022-2023)
-    } else if (userId < 7000000000) {
-      return 0.7; // Very new (2023-2024)
-    } else {
-      return 0.3; // Brand new (2024+)
-    }
-  };
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     const now = new Date();
@@ -257,7 +239,6 @@ export default function AirdropApp() {
     if (!user) return;
     
     try {
-      // Update points directly (Adsgram integration can be added later)
       const { error } = await supabase
         .from('users')
         .update({
@@ -322,8 +303,9 @@ export default function AirdropApp() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#0088CC]"></div>
+      <div className="flex flex-col items-center justify-center min-h-screen gap-4">
+        <Loader2 className="animate-spin text-[#0088CC]" size={48} />
+        {fetchingAge && <p className="text-zinc-400 text-sm">Verifying account age...</p>}
       </div>
     );
   }
@@ -362,6 +344,7 @@ export default function AirdropApp() {
                 Your Telegram account is {user.accountAgeYears.toFixed(1)} years old. 
                 Minimum requirement is 1 year.
               </p>
+              <p className="text-zinc-500 text-xs mt-2">User ID: {user.telegramId}</p>
             </div>
           </Card>
         ) : (

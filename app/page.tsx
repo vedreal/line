@@ -35,71 +35,74 @@ export default function Home() {
     const init = async () => {
       if (typeof window === 'undefined') return;
 
-      const loadUserFromDB = async (tgUser: any) => {
-        if (!tgUser?.id) return false;
-        const tgId = tgUser.id;
+      const webApp = (window as any).Telegram?.WebApp;
+      if (webApp) {
+        webApp.ready();
+        webApp.expand();
+      }
 
-        try {
-          let { data, error } = await supabase
-            .from('users')
-            .select('*')
-            .eq('telegram_id', tgId)
-            .single();
-
-          if (error && error.code === 'PGRST116') {
-            const newUser = {
-              telegram_id: tgId,
-              username: tgUser.username || '',
-              first_name: tgUser.first_name || '',
-              points: 100,
-              ton_balance: 0,
-              is_eligible: true,
-              last_check_in: null,
-              email: null
-            };
-
-            const { data: createdUser, error: createError } = await supabase
+      const attemptFetch = async () => {
+        const currentWebApp = (window as any).Telegram?.WebApp;
+        // The most critical part: get the user ID from ANY available source
+        const tgUser = currentWebApp?.initDataUnsafe?.user;
+        const tgId = tgUser?.id;
+        
+        if (tgId) {
+          try {
+            // Attempt to fetch from Supabase
+            const { data, error } = await supabase
               .from('users')
-              .insert([newUser])
-              .select()
-              .single();
+              .select('*')
+              .eq('telegram_id', tgId)
+              .maybeSingle();
 
-            if (!createError) {
-              setUser(createdUser);
+            if (error) {
+              console.error("Supabase Select Error:", error.message);
+              return false;
             }
-          } else if (data) {
-            setUser(data);
-          }
-          return true;
-        } catch (err) {
-          console.error("Supabase Error:", err);
-          return false;
-        } finally {
-          setLoading(false);
-        }
-      };
 
-      const checkWebApp = async () => {
-        const webApp = (window as any).Telegram?.WebApp;
-        if (webApp) {
-          webApp.ready();
-          webApp.expand();
-          
-          // Use whatever is available, initDataUnsafe is the most reliable for ID
-          const tgUser = webApp.initDataUnsafe?.user;
-          if (tgUser) {
-            return await loadUserFromDB(tgUser);
+            if (!data) {
+              // Create user if not exists
+              const newUser = {
+                telegram_id: tgId,
+                username: tgUser.username || '',
+                first_name: tgUser.first_name || '',
+                points: 100,
+                ton_balance: 0,
+                is_eligible: true,
+                last_check_in: null,
+                email: null
+              };
+
+              const { data: created, error: createError } = await supabase
+                .from('users')
+                .insert([newUser])
+                .select()
+                .maybeSingle();
+
+              if (createError) {
+                console.error("Supabase Create Error:", createError.message);
+                return false;
+              }
+              setUser(created);
+            } else {
+              setUser(data);
+            }
+            return true;
+          } catch (err) {
+            console.error("Unexpected Error:", err);
+            return false;
           }
         }
         return false;
       };
 
-      // Poll for 10 seconds
+      // Aggressive retry loop: 250ms interval, up to 40 times (10 seconds total)
       let attempts = 0;
       const interval = setInterval(async () => {
         attempts++;
-        const success = await checkWebApp();
-        if (success || attempts > 40) {
+        const success = await attemptFetch();
+        if (success || attempts >= 40) {
           clearInterval(interval);
           setLoading(false);
         }
@@ -147,9 +150,10 @@ export default function Home() {
         .select().single();
       if (!error && data) {
         setUser(data);
-        (window as any).Telegram?.WebApp?.HapticFeedback.notificationOccurred('success');
+        const webApp = (window as any).Telegram?.WebApp;
+        if (webApp) webApp.HapticFeedback.notificationOccurred('success');
       }
-    }, (err) => alert("Ad failed to load."));
+    }, (err) => alert("Iklan gagal dimuat."));
   };
 
   const handleEmailSubmit = async () => {
@@ -174,16 +178,14 @@ export default function Home() {
     </div>
   );
 
-  // If we have an ID but loading is false and user is still null, it's a Supabase/Data issue
   if (!user) {
     const tgId = (window as any).Telegram?.WebApp?.initDataUnsafe?.user?.id;
     return (
       <div className="flex flex-col items-center justify-center min-h-screen p-6 text-center">
         <XCircle size={64} className="text-red-500 mb-4" />
-        <h1 className="text-xl font-bold mb-2">Akses Ditolak / Data Error</h1>
-        <p className="text-zinc-400 mb-4">Pastikan Anda membuka aplikasi melalui Telegram Mini App.</p>
-        <div className="text-[10px] text-zinc-600 font-mono">ID: {tgId || "Not Detected"}</div>
-        {!tgId && <p className="text-xs mt-2 text-red-400">Telegram SDK tidak mendeteksi ID Anda.</p>}
+        <h1 className="text-xl font-bold mb-2">Akses Ditolak</h1>
+        <p className="text-zinc-400 mb-4">Buka aplikasi ini melalui Telegram Mini App.</p>
+        <div className="text-[10px] text-zinc-600 font-mono">ID: {tgId || "Tidak Terdeteksi"}</div>
       </div>
     );
   }
@@ -241,7 +243,9 @@ export default function Home() {
                   </div>
                   <Button onClick={() => {
                     const url = `https://t.me/share/url?url=https://t.me/tonline_bot?start=${user.telegram_id}&text=Join Tonline Airdrop!`;
-                    (window as any).Telegram?.WebApp?.openTelegramLink(url);
+                    const webApp = (window as any).Telegram?.WebApp;
+                    if (webApp) webApp.openTelegramLink(url);
+                    else window.open(url, '_blank');
                   }}>Undang</Button>
                 </div>
               </Card>

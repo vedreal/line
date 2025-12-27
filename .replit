@@ -43,3 +43,9 @@ outputType = "webview"
 
 [agent]
 expertMode = true
+
+[userenv]
+
+[userenv.shared]
+NEXT_PUBLIC_SUPABASE_URL = "https://oamzhydihhtoezqagxyx.supabase.co"
+NEXT_PUBLIC_SUPABASE_ANON_KEY = "sb_publishable_O3sDnH6WCsScFrOnP1mOIA_9I1oeEgm"

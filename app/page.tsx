@@ -205,7 +205,12 @@ export default function Home() {
       const { loadAdsgram } = await import('@/lib/adsgram');
       await loadAdsgram();
       
-      const AdController = window.Adsgram.init({ blockId: process.env.NEXT_PUBLIC_ADSGRAM_ZONE_ID });
+      if (!window.Adsgram) {
+        throw new Error('Adsgram SDK not loaded');
+      }
+
+      const blockId = process.env.NEXT_PUBLIC_ADSGRAM_ZONE_ID || '';
+      const AdController = window.Adsgram.init({ blockId });
       
       const result = await AdController.show();
       
@@ -508,4 +513,4 @@ function NavButton({ active, onClick, icon, label }: any) {
       <span className="text-[10px] font-bold uppercase tracking-wider">{label}</span>
     </button>
   );
-        }
+      }

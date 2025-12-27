@@ -69,7 +69,7 @@ export default function AirdropApp() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  const AIRDROP_END_DATE = new Date("2025-03-10T00:00:00Z");
+  const AIRDROP_END_DATE = new Date("2026-03-10T00:00:00Z");
 
   // Account age estimation function
   const estimateAccountAge = (userId: number): number => {
@@ -541,16 +541,18 @@ export default function AirdropApp() {
           </Card>
         ) : (
           <Card className="border-[#0088CC]/30 bg-[#0088CC]/5">
-            <div className="flex items-center gap-3 mb-2">
+            <div className="flex items-center gap-3 mb-3">
               <CheckCircle2 size={24} className="text-green-500" />
-              <h2 className="text-lg font-bold text-green-500">You are Eligible!</h2>
+              <h2 className="text-lg font-bold text-green-500">You are eligible to participate!</h2>
             </div>
-            <p className="text-zinc-400 text-sm mb-1">
-              Account Age: <span className={`font-bold ${getAgeTierColor(user.accountAgeYears)}`}>{getAgeTier(user.accountAgeYears)}</span>
-            </p>
-            <p className="text-zinc-400 text-sm">
-              Age Bonus: <span className="text-yellow font-bold">+{Math.floor(user.accountAgeYears * 1000)} pts</span>
-            </p>
+            <div className="space-y-1 text-sm">
+              <p className="text-zinc-400">
+                ID: <span className="text-white font-mono">@{user.username}</span>
+              </p>
+              <p className="text-zinc-400">
+                Account Age: <span className={`font-bold ${getAgeTierColor(user.accountAgeYears)}`}>{getAgeTier(user.accountAgeYears)}</span>
+              </p>
+            </div>
           </Card>
         )}
 
@@ -595,7 +597,7 @@ export default function AirdropApp() {
                 <div className="text-3xl font-black text-center py-4 font-mono tracking-wider bg-black/40 rounded-xl border border-white/5">
                   {timeLeft}
                 </div>
-                <p className="text-center text-xs text-zinc-500 mt-2">March 10, 2025</p>
+                <p className="text-center text-xs text-zinc-500 mt-2">March 10, 2026</p>
               </Card>
             </motion.div>
           )}
